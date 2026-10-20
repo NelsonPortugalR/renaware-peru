@@ -1,0 +1,11 @@
+{
+  // El nombre tiene que ser igual al del proyecto en Cloudflare o la compilación falla.
+  "name": "renaware-peru",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    // El sitio entero es estático y vive en la raíz del repo.
+    "directory": "./",
+    // Cualquier ruta que no sea un archivo (por ejemplo /admin) abre index.html.
+    "not_found_handling": "single-page-application"
+  }
+}
