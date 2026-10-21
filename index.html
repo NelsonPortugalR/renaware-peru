@@ -12,6 +12,31 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://www.youtube-nocookie.com">
 <link rel="preconnect" href="https://i.ytimg.com" crossorigin>
+<script>
+/* Traspaso desde la plataforma: si el enlace trae #traspaso=<código>, se canjea por la sesión
+   propia de este módulo y se arranca ya con sesión. Si no trae nada, no pasa nada. */
+(function () {
+  var m = (location.hash || '').match(/[#&]traspaso=([0-9a-f-]{36})/i);
+  if (!m) return;
+  var codigo = m[1];
+  var resto = location.hash.slice(1).split('&').filter(function (p) { return p && !/^traspaso=/i.test(p); }).join('&');
+  history.replaceState(null, '', location.pathname + location.search + (resto ? '#' + resto : ''));
+  var raiz = document.documentElement, visAntes = raiz.style.visibility;
+  raiz.style.visibility = 'hidden';
+  function guardar(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
+  fetch('https://kiexpdaaoegbtesqmaff.supabase.co/functions/v1/traspaso', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'apikey': 'sb_publishable_pftOAOUR51_Q5gq-Qqra-g_cc0rzhth' },
+    body: JSON.stringify({ codigo: codigo })
+  }).then(function (r) { return r.json(); }).then(function (d) {
+    if (!d || !d.ok) throw new Error((d && d.motivo) || 'Enlace inválido');
+    if (d.tipo === 'asesor') guardar('rw_sesion_v1', d.token);
+    else if (d.admin_token) guardar('rw_admin_tok_v1', d.admin_token);
+    else throw new Error('Sin credencial para este módulo');
+    location.replace(location.pathname + location.search + location.hash);
+  }).catch(function () { raiz.style.visibility = visAntes; });
+})();
+</script>
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
