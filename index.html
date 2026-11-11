@@ -102,56 +102,58 @@
     try { sb.rpc("registrar_evento", { p_token: sesionTok, p_tipo: tipo, p_detalle: detalle || {} }); } catch (e) {}
   };
   var ADMIN_KEY = "rw_admin_config_v1";
-  var CATALOG_CACHE_KEY = "rw_catalogo_v1";
-  var PRODUCTOS = [
-    { num: 1, cat: "zylstra", nombre: "Juego Gourmet Serie Zylstra", codigo: "000158", precio: 9629, puntos: 1583, comision: 1187.3, alias: "juego ollas bateria cocina set completo" },
-    { num: 2, cat: "zylstra", nombre: "Juego Chef I Serie Zylstra", codigo: "000159", precio: 3893, puntos: 640, comision: 480.03, alias: "juego ollas bateria cocina set" },
-    { num: 3, cat: "zylstra", nombre: "Juego Chef II Serie Zylstra", codigo: "000160", precio: 3893, puntos: 640, comision: 480.03, alias: "juego ollas bateria cocina set" },
-    { num: 4, cat: "zylstra", nombre: "Asador de 6 Litros Serie Zylstra", codigo: "000170", precio: 1794, puntos: 295, comision: 221.21, alias: "olla asador horno" },
-    { num: 5, cat: "zylstra", nombre: "Bandeja Ralladora / Vaporizadora 6 L", codigo: "000021", precio: 272, puntos: 45, comision: 33.54, alias: "rallador vaporera vaporizador bandeja" },
-    { num: 6, cat: "grandes", nombre: "Juego Jumbo", codigo: "000144", precio: 5934, puntos: 976, comision: 731.69, alias: "juego ollas bateria grande jumbo set" },
-    { num: 7, cat: "grandes", nombre: "Max Cooker 27 L Serie Zylstra", codigo: "000178", precio: 4987, puntos: 820, comision: 614.92, alias: "olla grande cooker max gigante" },
-    { num: 8, cat: "grandes", nombre: "Olla a Presi\xF3n 8 L", codigo: "000203", precio: 3229, puntos: 531, comision: 398.15, alias: "olla presion expres rapida" },
-    { num: 9, cat: "grandes", nombre: "Gran Cacerola Serie Zylstra", codigo: "177100", precio: 2637, puntos: 434, comision: 325.16, alias: "cacerola olla grande" },
-    { num: 10, cat: "grandes", nombre: "Super Deluxe Cooker 16 L", codigo: "000145", precio: 2321, puntos: 382, comision: 286.19, alias: "olla grande cooker deluxe" },
-    { num: 11, cat: "grandes", nombre: "King Cooker 12 L", codigo: "000146", precio: 2149, puntos: 353, comision: 264.98, alias: "olla grande cooker king" },
-    { num: 12, cat: "grandes", nombre: "Queen Cooker 8 L", codigo: "000147", precio: 1473, puntos: 242, comision: 181.63, alias: "olla grande cooker queen" },
-    { num: 13, cat: "grandes", nombre: "Princesa Zylstra", codigo: "000179", precio: 1311, puntos: 216, comision: 161.65, alias: "olla princesa cacerola" },
-    { num: 14, cat: "sartenes", nombre: "Rondeau 4.5 L", codigo: "000171", precio: 1732, puntos: 285, comision: 213.57, alias: "olla cacerola rondeau sarten" },
-    { num: 15, cat: "sartenes", nombre: "Sart\xE9n Grande con Tapa 30 cm", codigo: "000118", precio: 1396, puntos: 230, comision: 172.13, alias: "sarten freir grande tapa" },
-    { num: 16, cat: "sartenes", nombre: "Renawok 34 cm", codigo: "000235", precio: 1310, puntos: 215, comision: 161.53, alias: "wok sarten salteado" },
-    { num: 17, cat: "sartenes", nombre: "Rena Signature 3.5 L", codigo: "000199", precio: 1240, puntos: 204, comision: 152.9, alias: "olla cacerola signature sarten" },
-    { num: 18, cat: "sartenes", nombre: "Sart\xE9n Grill 36 cm", codigo: "000119", precio: 1062, puntos: 175, comision: 130.95, alias: "sarten grill plancha asador" },
-    { num: 19, cat: "sartenes", nombre: "Sart\xE9n Peque\xF1a con Tapa 24 cm", codigo: "000117", precio: 943, puntos: 155, comision: 116.28, alias: "sarten freir pequena tapa" },
-    { num: 20, cat: "sartenes", nombre: "Sart\xE9n Chef sin Tapa 30 cm", codigo: "000134", precio: 793, puntos: 130, comision: 97.78, alias: "sarten freir chef" },
-    { num: 21, cat: "sartenes", nombre: "Saucepan 2.5 L", codigo: "000166", precio: 693, puntos: 114, comision: 85.45, alias: "olla cacerola saucepan sarten" },
-    { num: 22, cat: "sartenes", nombre: "Saucier 1.75 L", codigo: "000165", precio: 640, puntos: 105, comision: 78.92, alias: "olla cacerola saucier salsa sarten" },
-    { num: 23, cat: "sartenes", nombre: "Mini Sart\xE9n con Tapa 18 cm", codigo: "000133", precio: 575, puntos: 95, comision: 70.9, alias: "sarten freir mini pequena tapa" },
-    { num: 24, cat: "complementarias", nombre: "Juego de Cuchillos Elite 16 Piezas", codigo: "000115", precio: 2060, puntos: 339, comision: 254.01, alias: "cuchillos set navajas" },
-    { num: 25, cat: "complementarias", nombre: "Parrilla Doble", codigo: "000200", precio: 1779, puntos: 292, comision: 219.36, alias: "parrilla plancha asador grill doble" },
-    { num: 26, cat: "complementarias", nombre: "Cubiertos \xC9lite 35 Piezas", codigo: "001261", precio: 1750, puntos: 288, comision: 215.78, alias: "cubiertos tenedores cucharas cuchillos mesa" },
-    { num: 27, cat: "complementarias", nombre: "Contessa", codigo: "000206", precio: 1671, puntos: 275, comision: 206.04, alias: "olla contessa cacerola" },
-    { num: 28, cat: "complementarias", nombre: "Juego de \xDAtiles de Cocina", codigo: "000163", precio: 1566, puntos: 257, comision: 193.1, alias: "utensilios cucharon espatula cuchara herramientas" },
-    { num: 29, cat: "complementarias", nombre: "Tetera Rena Ware con Infusor de T\xE9", codigo: "000234", precio: 1409, puntos: 231, comision: 173.74, alias: "tetera te hervidor infusor agua" },
-    { num: 30, cat: "electricos", nombre: "Extractor de Jugo Nutrex Press", codigo: "000105", precio: 3116, puntos: 503, comision: 370.53, alias: "exprimidor extractor jugos juguera nutrex" },
-    { num: 31, cat: "electricos", nombre: "Purificador de Aire Aeroquattro+ UV", codigo: "000218", precio: 2811, puntos: 462, comision: 346.61, alias: "filtro de aire purificador ambiente aire limpiador" },
-    { num: 32, cat: "electricos", nombre: "Cocina de Inducci\xF3n IC-450", codigo: "000169", precio: 2244, puntos: 363, comision: 267.94, alias: "cocina electrica hornilla vitroceramica induccion anafe" },
-    { num: 33, cat: "electricos", nombre: "Multi Cooker", codigo: "000132", precio: 1437, puntos: 232, comision: 171.27, alias: "olla electrica multiusos arrocera multi cooker" },
-    { num: 34, cat: "electricos", nombre: "Cartucho para Filtro Aero / Quattro+ UV", codigo: "000224", precio: 710, puntos: 99, comision: 61.28, alias: "filtro aire repuesto cartucho purificador" },
-    { num: 35, cat: "filtros", nombre: "Aqua Nano UCU LX-500S (Grifo Secundario)", codigo: "000128", precio: 5722, puntos: 928, comision: 686.18, alias: "filtro de agua purificador agua grifo aqua nano" },
-    { num: 36, cat: "filtros", nombre: "Aqua Nano CTU-500", codigo: "000125", precio: 4444, puntos: 731, comision: 547.97, alias: "filtro de agua purificador agua aqua nano" },
-    { num: 37, cat: "filtros", nombre: "Filtro de Agua Port\xE1til RWF-228", codigo: "000217", precio: 2283, puntos: 375, comision: 281.51, alias: "filtro de agua portatil purificador agua viaje" },
-    { num: 38, cat: "filtros", nombre: "Repuesto para Filtro RWF-228", codigo: "000219", precio: 599, puntos: 98, comision: 73.86, alias: "filtro agua repuesto cartucho portatil" },
-    { num: 39, cat: "filtros", nombre: "Botella Filtrante Rena Ware", codigo: "000107", precio: 486, puntos: 80, comision: 59.93, alias: "botella filtro agua termo filtrante" },
-    { num: 40, cat: "filtros", nombre: "Alojamiento Reusable + Elemento Desechable", codigo: "001218", precio: 440, puntos: 61, comision: 37.98, alias: "filtro agua repuesto elemento cartucho" },
-    { num: 41, cat: "filtros", nombre: "Elemento Desechable para Aqua Nano", codigo: "001219", precio: 335, puntos: 48, comision: 30.98, alias: "filtro agua repuesto elemento cartucho" },
-    { num: 42, cat: "filtros", nombre: "Cartucho para Botella Filtrante", codigo: "000109", precio: 258, puntos: 42, comision: 31.81, alias: "filtro agua repuesto cartucho botella" },
-    { num: 43, cat: "filtros", nombre: "Pre Filtro EM para Aqua Nano", codigo: "000096", precio: 222, puntos: 18, comision: 0, alias: "filtro agua repuesto prefiltro cartucho" },
-    { num: 44, cat: "filtros", nombre: "Pack de Bandas para Botella Filtrante", codigo: "000016", precio: 73, puntos: 12, comision: 9, alias: "bandas botella repuesto accesorio" },
-    { num: 45, cat: "accesorios", nombre: "Rena Lite (Pack Promocional 12 Unidades)", codigo: "000233", precio: 720, puntos: 108, comision: 67.63, alias: "rena lite pastillas limpieza pack", bonoAplica: false },
-    { num: 46, cat: "accesorios", nombre: "Rena Lite (Pack 4 Unidades)", codigo: "000232", precio: 380, puntos: 64, comision: 46.85, alias: "rena lite pastillas limpieza" },
-    { num: 47, cat: "accesorios", nombre: "Juego de Esp\xE1tulas", codigo: "000113", precio: 295, puntos: 49, comision: 36.38, alias: "espatulas utensilios cuchara" }
-  ];
+  var CATALOG_CACHE_KEY = "rw_catalogo_v2";
+  try { localStorage.removeItem("rw_catalogo_v1"); } catch (e) {}
+  // Palabras con las que también se encuentra cada producto en el buscador, por código
+  var ALIAS_POR_CODIGO = {
+    "000158": "juego ollas bateria cocina set completo",
+    "000159": "juego ollas bateria cocina set",
+    "000160": "juego ollas bateria cocina set",
+    "000170": "olla asador horno",
+    "000021": "rallador vaporera vaporizador bandeja",
+    "000144": "juego ollas bateria grande jumbo set",
+    "000178": "olla grande cooker max gigante",
+    "000203": "olla presion expres rapida",
+    "177100": "cacerola olla grande",
+    "000145": "olla grande cooker deluxe",
+    "000146": "olla grande cooker king",
+    "000147": "olla grande cooker queen",
+    "000179": "olla princesa cacerola",
+    "000171": "olla cacerola rondeau sarten",
+    "000118": "sarten freir grande tapa",
+    "000235": "wok sarten salteado",
+    "000199": "olla cacerola signature sarten",
+    "000119": "sarten grill plancha asador",
+    "000117": "sarten freir pequena tapa",
+    "000134": "sarten freir chef",
+    "000166": "olla cacerola saucepan sarten",
+    "000165": "olla cacerola saucier salsa sarten",
+    "000133": "sarten freir mini pequena tapa",
+    "000115": "cuchillos set navajas",
+    "000200": "parrilla plancha asador grill doble",
+    "001261": "cubiertos tenedores cucharas cuchillos mesa",
+    "000206": "olla contessa cacerola",
+    "000163": "utensilios cucharon espatula cuchara herramientas",
+    "000234": "tetera te hervidor infusor agua",
+    "000105": "exprimidor extractor jugos juguera nutrex",
+    "000218": "filtro de aire purificador ambiente aire limpiador",
+    "000169": "cocina electrica hornilla vitroceramica induccion anafe",
+    "000132": "olla electrica multiusos arrocera multi cooker",
+    "000224": "filtro aire repuesto cartucho purificador",
+    "000128": "filtro de agua purificador agua grifo aqua nano",
+    "000125": "filtro de agua purificador agua aqua nano",
+    "000217": "filtro de agua portatil purificador agua viaje",
+    "000219": "filtro agua repuesto cartucho portatil",
+    "000107": "botella filtro agua termo filtrante",
+    "001218": "filtro agua repuesto elemento cartucho",
+    "001219": "filtro agua repuesto elemento cartucho",
+    "000109": "filtro agua repuesto cartucho botella",
+    "000096": "filtro agua repuesto prefiltro cartucho",
+    "000016": "bandas botella repuesto accesorio",
+    "000233": "rena lite pastillas limpieza pack",
+    "000232": "rena lite pastillas limpieza",
+    "000113": "espatulas utensilios cuchara"
+  };
   var Finanzas = {
     calcularCuota(saldo, meses) {
       if (saldo <= 0 || !FACTORES[meses]) return 0;
@@ -375,10 +377,14 @@
     const menor = [...arr].sort((a, b) => a.puntos - b.puntos)[0];
     return { alcanzado: false, meta: menor, faltante: menor.puntos - pts, esTope: false };
   };
-  var formatMoney = (n) => new Intl.NumberFormat("es-PE", { style: "currency", currency: "PEN", maximumFractionDigits: 0 }).format(n);
+  var formatMoney = (n) => {
+    const v = Math.round((Number(n) || 0) * 100) / 100;
+    const dec = Number.isInteger(v) ? 0 : 2;     // S/ 24 y S/ 176.50: los céntimos solo cuando existen
+    return new Intl.NumberFormat("es-PE", { style: "currency", currency: "PEN", minimumFractionDigits: dec, maximumFractionDigits: dec }).format(v);
+  };
   var norm = (s = "") => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   var matchProduct = (p, q, reglas) => {
-    const base = norm(`${p.name} ${p.alias || ""} ${p.codigo} n ${p.orden}`);
+    const base = norm(`${p.name} ${p.alias || ""} ${p.busca || ""} ${p.esServicio ? "" : p.codigo} ${p.esCat ? "" : "n " + p.orden}`);   // un servicio no tiene código ni número que buscar
     let text = base;
     if (reglas && reglas.length) {
       const extra = reglas.filter((r) => r && r.termino && r.aplicaA && base.includes(norm(r.aplicaA))).map((r) => norm(r.termino));
@@ -387,7 +393,6 @@
     const words = norm(q).split(/\s+/).filter(Boolean);
     return words.every((w) => text.includes(w));
   };
-  var ALIAS_POR_CODIGO = Object.fromEntries(PRODUCTOS.map((p) => [p.codigo, p.alias || ""]));
   var CAT_MAP = {
     "serie zylstra": "zylstra",
     "utensilios grandes": "grandes",
@@ -422,8 +427,8 @@
     const g = GRUPOS_ESPECIALES.find((x) => x.test(n));
     return g ? g.key : "esp-otros";
   };
-  var ORDEN_LISTAS = ["tienda-online", "general", "compartir", "primavera", "especiales-distincion", "tu-agosto", "flash-patrio", "adicionales", "repuestos"];
-  var ETIQUETA_CORTA = { "tienda-online": "Tienda en L\xEDnea", "general": "Lista General", "compartir": "Compartir", "primavera": "Primavera", "especiales-distincion": "Especiales", "tu-agosto": "Tu Agosto", "flash-patrio": "Flash Patrio", "adicionales": "Adicionales", "repuestos": "Repuestos" };
+  var ORDEN_LISTAS = ["tienda-online", "general", "compartir", "primavera", "especiales-distincion", "tu-agosto", "flash-patrio", "adicionales", "repuestos", "servicios"];
+  var ETIQUETA_CORTA = { "tienda-online": "Tienda en L\xEDnea", "general": "Lista General", "compartir": "Compartir", "primavera": "Primavera", "especiales-distincion": "Especiales", "tu-agosto": "Tu Agosto", "flash-patrio": "Flash Patrio", "adicionales": "Adicionales", "repuestos": "Repuestos", "servicios": "Servicios" };
   var TODAS_KEY = "__todas__";
   var SIGLAS = new Set(["I", "II", "III", "IV", "V", "VI", "L", "ML", "CM", "UV", "EM", "LX", "CTU", "UCU", "RWF", "IC", "LED", "USB", "TV"]);
   var PROPIOS = ["rena ware", "rena lite", "rena signature", "renawok", "aqua nano", "nutrex press", "nutrex", "aeroquattro", "zylstra", "max cooker", "king cooker", "queen cooker", "super deluxe cooker", "multi cooker", "contessa", "princesa", "saucier", "saucepan", "rondeau", "santoku", "chef", "gourmet", "jumbo", "\xE9lite", "elite"];
@@ -450,20 +455,54 @@
     }).join("");
     return out;
   };
-  var normDB = (p, sinPuntos = false) => ({
+  // ---- Repuestos y Servicios se muestran como catálogo: grupo, subgrupo, nombre corto y precio a la vista
+  var mayus1 = (s) => s ? s.charAt(0).toUpperCase() + s.slice(1) : "";
+  var claveDe = (s) => norm(s || "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  // «Título · detalle» o «Título (detalle)» → [título, detalle]
+  var partirTitulo = (nombre) => {
+    const n = (nombre || "").trim();
+    const i = n.indexOf(" \xB7 ");
+    if (i > 0) return [n.slice(0, i), mayus1(n.slice(i + 3).trim())];
+    const m = n.match(/^(.+?)\s*\(([^()]+)\)\s*$/);
+    return m ? [m[1], mayus1(m[2].trim())] : [n, ""];
+  };
+  // «Pulido de olla 2 L» dentro de la sección «Pulido» → «Olla 2 L»
+  var sinPrefijo = (titulo, seccion) => {
+    const t = titulo || "", pre = norm(seccion || "") + " de ";
+    return pre.length > 4 && norm(t).indexOf(pre) === 0 ? mayus1(t.slice(pre.length)) : t;
+  };
+  // Reparto de los botones de lista en el celular: filas parejas de hasta 3 (5 → 3 + 2, 4 → 2 + 2), sin botón estirado
+  var repartoListas = (n) => {
+    if (n <= 3) return new Array(n).fill(n ? 6 / n : 6);
+    const filas = Math.ceil(n / 3), base = Math.floor(n / filas), extra = n % filas, out = [];
+    for (let f = 0; f < filas; f++) {
+      const k = base + (f < extra ? 1 : 0);
+      for (let i = 0; i < k; i++) out.push(6 / k);
+    }
+    return out;
+  };
+  var normDB = (p, sinPuntos = false) => {
+    const nomCat = (p.nombre_catalogo || "").trim();
+    const oficial = titleCase(p.nombre || "");
+    const partes = nomCat ? partirTitulo(nomCat) : [oficial, ""];
+    return {
     id: p.lista_id + "|" + p.codigo,
     lista: p.lista_id,
     orden: p.orden,
     categoria: mapCat(p.categoria),
     grupo: !p.grupo && !mapCat(p.categoria) && /^Especial\s*#/i.test(p.categoria || "") ? grupoEspecial(p.nombre) : null,
     catRaw: p.grupo || p.categoria || "",
-    name: titleCase(p.nombre || ""),
+    sub: p.subgrupo || "",
+    name: nomCat || oficial,
+    titulo: partes[0],
+    detalleCorto: partes[1],
+    busca: nomCat ? oficial + " " + (p.grupo || "") + " " + (p.subgrupo || "") : "",
     codigo: p.codigo,
     alias: ALIAS_POR_CODIGO[p.codigo] || "",
     points: p.puntos || 0,
     regularPrice: p.precio,
     cashPrice: p.precio,
-    autoPrice: p.precio_asesor != null ? Math.round(p.precio_asesor) : null,
+    autoPrice: p.precio_asesor != null ? (p.precio_asesor_fijo != null ? Number(p.precio_asesor) : Math.round(p.precio_asesor)) : null,
     internalCommission: (p.valor_comisionable || 0) * 0.15,
     valorComisionable: Number(p.valor_comisionable) || 0,
     image: `/promociones/${p.codigo}.webp`,
@@ -474,7 +513,50 @@
     precioAsesorFijo: p.precio_asesor_fijo != null ? Number(p.precio_asesor_fijo) : null,
     precioManual: p.precio_cliente_manual != null ? Number(p.precio_cliente_manual) : null,
     gift: p.regalo || ""
-  });
+    };
+  };
+  // Un servicio (cot_servicios) con la misma forma que un producto, para que la ficha y el buscador lo traten igual
+  var normServicio = (s) => {
+    const cat = s.categoria || "";
+    const i = cat.indexOf(" \xB7 ");
+    const partes = partirTitulo(s.nombre || "");
+    const precio = s.precio != null ? Number(s.precio) : null;
+    return {
+      id: "servicios|" + s.codigo,
+      lista: "servicios",
+      orden: s.orden || 0,
+      categoria: null,
+      grupo: null,
+      catRaw: cat,
+      sub: s.subgrupo || "",
+      variante: i > 0 ? cat.slice(i + 3) : "",
+      name: s.nombre || "",
+      titulo: partes[0],
+      detalleCorto: partes[1] || s.detalle || "",
+      detalle: s.detalle || "",
+      unidad: s.unidad || "",
+      busca: cat + " " + (s.subgrupo || "") + " " + (s.detalle || "") + " servicio",
+      codigo: s.codigo,
+      alias: "",
+      points: 0,
+      regularPrice: precio,
+      cashPrice: precio,
+      autoPrice: s.precio_asesor != null ? Number(s.precio_asesor) : null,
+      internalCommission: 0,
+      valorComisionable: 0,
+      image: "/promociones/" + (s.foto || s.codigo) + ".webp",
+      bonoAplica: false,
+      regaloDB: "",
+      piezasClave: null,
+      componentes: null,
+      precioAsesorFijo: null,
+      precioManual: null,
+      gift: "",
+      esServicio: true,
+      esCat: true,
+      precioTexto: s.precio_texto || ""
+    };
+  };
   var aplicarReglas = (reglas, factores) => {
     if (reglas) {
       if (reglas.pct_inicial_minima != null) CONFIG.inicialMinPercent = Number(reglas.pct_inicial_minima);
@@ -524,12 +606,111 @@
       aviso: l.aviso || "",
       orden: l.orden || 99
     })).sort((a, b) => posLista(a.key) - posLista(b.key) || a.orden - b.orden);
-    const piezas = await q("piezas?select=*").catch(() => []);
+    const [piezas, servicios, grupos] = await Promise.all([
+      q("piezas?select=*").catch(() => []),
+      q("cot_servicios?activo=eq.true&select=*&order=orden").catch(() => []),
+      q("cot_grupos?select=*&order=orden").catch(() => [])
+    ]);
+    const defs = Array.isArray(grupos) ? grupos : [];
+    const servs = Array.isArray(servicios) ? servicios : [];
+    // Servicios no es una lista de precios de la base (la web y el registro publican toda lista vigente): se arma aquí
+    if (servs.some((x) => x.tipo !== "sin_precio") && !vigentes.some((l) => l.key === "servicios")) {
+      const general = defs.find((g) => g.lista_id === "servicios" && g.grupo === "*");
+      vigentes.push({ key: "servicios", label: "Servicios", credito: false, contado: true, autocompra: true, mezcla: false, labelCorto: "Servicios", soloTerceros: false, sinPuntos: true, actualizada: servs.map((x) => x.updated_at || "").sort().pop() || null, factorCliente: null, aviso: general && general.nota || "", orden: 99 });
+      vigentes.sort((a, b) => posLista(a.key) - posLista(b.key) || a.orden - b.orden);
+    }
+    // una lista se muestra como catálogo (grupos, notas y precio a la vista) si tiene grupos definidos en cot_grupos
+    const conGrupos = new Set(defs.map((g) => g.lista_id));
+    vigentes.forEach((l) => { l.catalogo = conGrupos.has(l.key) || l.key === "servicios"; });
     const activas = new Set(vigentes.map((l) => l.key));
     const sinPts = new Set(vigentes.filter((l) => l.sinPuntos).map((l) => l.key));
-    const items = (productos || []).filter((p) => activas.has(p.lista_id)).map((p) => normDB(p, sinPts.has(p.lista_id)));
-    return { piezas: piezas || [], listas: vigentes, productos: items };
+    const items = (productos || []).filter((p) => activas.has(p.lista_id)).map((p) => {
+      const x = normDB(p, sinPts.has(p.lista_id));
+      if (conGrupos.has(p.lista_id)) x.esCat = true;
+      return x;
+    });
+    const sinPrecio = [];
+    if (activas.has("servicios")) servs.forEach((x) => { const n = normServicio(x); if (x.tipo === "sin_precio") sinPrecio.push(n); else items.push(n); });
+    return { piezas: piezas || [], listas: vigentes, productos: items, grupos: defs, sinPrecio };
   }
+  // Arma la vista de catálogo de una lista: secciones (el grupo), bloques (el subgrupo) y filas.
+  // «Pulido · Tradicional» y «Pulido · Zylstra» son la misma sección: una fila por pieza y un precio por variante.
+  // `tambien` trae productos de otra lista que se muestran dentro del grupo (los cartuchos de la Lista General en su equipo).
+  var armarCatalogo = (listaKey, productos, grupos, sinPrecio, indice) => {
+    const porOrden = (a, b) => (a.orden || 0) - (b.orden || 0);
+    const defs = (grupos || []).filter((g) => g.lista_id === listaKey && g.grupo !== "*").sort(porOrden);
+    const def = (n) => defs.find((d) => d.grupo === n) || null;
+    const propios = (productos || []).filter((p) => p.lista === listaKey).sort(porOrden);
+    const sueltos = (sinPrecio || []).filter((x) => x.lista === listaKey).sort(porOrden);
+    const nombres = defs.map((d) => d.grupo);
+    propios.concat(sueltos).forEach((p) => { if (p.catRaw && nombres.indexOf(p.catRaw) < 0) nombres.push(p.catRaw); });
+    const partes = (n) => { const i = n.indexOf(" \xB7 "); return i > 0 ? [n.slice(0, i), n.slice(i + 3)] : null; };
+    const cuantas = {};
+    nombres.forEach((n) => { const b = partes(n); if (b) cuantas[b[0]] = (cuantas[b[0]] || 0) + 1; });
+    const secciones = [], porTitulo = {};
+    nombres.forEach((n) => {
+      const b = partes(n);
+      const esVar = !!(b && cuantas[b[0]] > 1);
+      const titulo = esVar ? b[0] : n;
+      let s = porTitulo[titulo];
+      if (!s) {
+        const d0 = def(titulo);
+        s = porTitulo[titulo] = { key: "sec-" + claveDe(titulo), titulo, familia: d0 && d0.familia || "", nota: d0 && d0.nota || "", variantes: [], grupos: [], tambien: [], bloques: [], sinPrecio: [], total: 0, cuenta: 0, chip: "" };
+        secciones.push(s);
+      }
+      const d = def(n);
+      if (d && d.familia && !s.familia) s.familia = d.familia;
+      if (esVar) s.variantes.push({ nombre: b[1], grupo: n, nota: d && d.nota || "" });
+      else if (d && Array.isArray(d.tambien)) s.tambien = s.tambien.concat(d.tambien);
+      s.grupos.push(n);
+    });
+    secciones.forEach((s) => {
+      const bloque = (sub) => {
+        const k = sub || "";
+        let b = s.bloques.find((x) => x.sub === k);
+        if (!b) { b = { sub: k, filas: [], foto: null }; s.bloques.push(b); }
+        return b;
+      };
+      if (s.variantes.length) {
+        const vistas = {};
+        s.variantes.forEach((v, vi) => {
+          propios.filter((p) => p.catRaw === v.grupo).forEach((p) => {
+            const corto = sinPrefijo(p.titulo, s.titulo);
+            const k = (p.sub || "") + "|" + norm(corto);
+            let f = vistas[k];
+            if (!f) {
+              f = vistas[k] = { tipo: "var", key: s.key + "-" + claveDe(k), titulo: corto, detalle: p.detalleCorto, ref: p, celdas: s.variantes.map(() => null) };
+              bloque(p.sub).filas.push(f);
+            }
+            f.celdas[vi] = p;
+          });
+        });
+      } else {
+        s.tambien.forEach((t) => {
+          const p = indice && indice[t.lista + "|" + t.codigo];
+          if (p) bloque(t.subgrupo).filas.push({ tipo: "uno", key: s.key + "-" + p.id, p, externo: true });
+        });
+        propios.filter((p) => s.grupos.indexOf(p.catRaw) >= 0).forEach((p) => bloque(p.sub).filas.push({ tipo: "uno", key: s.key + "-" + p.id, p, externo: false }));
+      }
+      // si todas las filas de un bloque comparten la foto (las ollas de un mismo juego), la foto va una sola vez, en el título del bloque
+      s.bloques.forEach((b) => {
+        const de = (f) => f.tipo === "var" ? f.ref : f.p;
+        if (b.filas.length > 1 && b.filas.every((f) => de(f).image === de(b.filas[0]).image)) b.foto = de(b.filas[0]);
+      });
+      s.sinPrecio = sueltos.filter((x) => s.grupos.indexOf(x.catRaw) >= 0 && !(s.variantes.length && /^no se hace$/i.test((x.precioTexto || "").trim())));
+      s.total = s.bloques.reduce((n, b) => n + b.filas.length, 0);
+      s.cuenta = s.total + s.sinPrecio.length;
+      s.chip = s.familia ? "fam-" + claveDe(s.familia) : s.key;
+    });
+    const visibles = secciones.filter((s) => s.total > 0 || s.sinPrecio.length > 0);
+    const chips = [];
+    visibles.forEach((s) => { if (!chips.some((c) => c.key === s.chip)) chips.push({ key: s.chip, label: s.familia || s.titulo }); });
+    const vistos = {}, buscables = [];
+    visibles.forEach((s) => s.bloques.forEach((b) => b.filas.forEach((f) => (f.tipo === "var" ? f.celdas : [f.p]).forEach((p) => {
+      if (p && !vistos[p.id]) { vistos[p.id] = 1; buscables.push(p); }
+    }))));
+    return { secciones: visibles, chips, buscables };
+  };
   var imgSrc = (p, overrides) => overrides && overrides[p.codigo] || p.image;
   var tieneFotoPropia = (p, overrides) => !!(overrides && overrides[p.codigo]);
   var videoSrc = (p, videos) => videos && videos[p.codigo] || "";
@@ -733,6 +914,94 @@
       return h("button", { key: o.meses, className: `inst-btn ${auto ? "auto" : ""} ${selectedTerm === o.meses ? "sel" : ""}`, onClick: () => setSelectedTerm(o.meses) }, h("span", { className: "inst-m" }, o.meses, "m"), h("span", { className: "inst-v" }, formatMoney(c)), orig != null && h("span", { className: "inst-orig" }, formatMoney(orig)));
     })), hayOcultas && h("div", { className: "info-banner orange sm" }, h(InfoSvg, null), h("span", null, "Se muestran las opciones con cuotas mayores a S/ ", CONFIG.cuotaMinimaPermitida, " que es el valor m\xEDnimo permitido de la cuota.")), !summaryMode && !creditBreakdown && precioTotalCredito() && h("div", { className: `credit-total ${auto ? "auto" : ""}` }, h("span", { className: "ct-label" }, auto ? "Tu" : "Precio", " Total al Cr\xE9dito (", selectedTerm, "m)"), h("span", { className: "ct-value" }, formatMoney(precioTotalCredito()))), (summaryMode || creditBreakdown) && creditTotal != null && h("div", { className: "credit-mini" }, auto && comparativo && creditTotalCli != null ? h(React.Fragment, null, h("div", { className: "cm-row" }, h("span", null, "Precio al cr\xE9dito"), h("span", null, formatMoney(creditTotalCli))), h("div", { className: "cm-row" }, h("span", null, "Total ahorro"), h("span", { className: "cm-save" }, "- ", formatMoney(creditDesc))), h("div", { className: "cm-row hl" }, h("span", null, "Tu total a pagar ", h("em", null, "(inicial + ", selectedTerm, " cuotas)")), h("span", null, formatMoney(creditTotal)))) : h("div", { className: "cm-row hl" }, h("span", null, "Total a pagar ", h("em", null, "(inicial + ", selectedTerm, " cuotas)")), h("span", null, formatMoney(creditTotal))))) : h("div", { className: "info-banner red" }, h(AlertSvg, null), h("span", null, "El m\xEDnimo saldo a financiar es S/ ", CONFIG.capitalMinimoFinanciar.toLocaleString(), ". Disminuya la inicial."))))));
   };
+  // ---- Catálogo (Repuestos y Servicios): filas compactas con el precio del cliente a la vista
+  var ChevSvg = ({ s = 16 }) => h("svg", { width: s, height: s, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2.4, strokeLinecap: "round", strokeLinejoin: "round" }, h("polyline", { points: "9 6 15 12 9 18" }));
+  var ArribaSvg = ({ s = 15 }) => h("svg", { width: s, height: s, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2.6, strokeLinecap: "round", strokeLinejoin: "round" }, h("polyline", { points: "6 15 12 9 18 15" }));
+  var alTeclado = (fn) => (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fn(); }
+  };
+  var FilaCatalogo = ({ p, externo, etiqueta, listaNombre, sinFoto, onOpen, imageOverrides }) => {
+    const src = imgSrc(p, imageOverrides);
+    const abrir = () => onOpen(p.id);
+    const pie = p.esServicio ? "" : "C\xF3d. " + p.codigo;
+    return h("div", { className: "fila", role: "button", tabIndex: 0, onClick: abrir, onKeyDown: alTeclado(abrir) },
+      !sinFoto && h("div", { className: "fila-img" }, h(LazyImage, { key: src, src, alt: "", codigo: p.codigo })),
+      h("div", { className: "fila-txt" },
+        etiqueta && h("span", { className: "fila-eti" }, etiqueta),
+        h("span", { className: "fila-tit" }, p.titulo || p.name),
+        p.detalleCorto && h("span", { className: "fila-det" }, p.detalleCorto),
+        (pie || externo) && h("span", { className: "fila-cod" }, pie, externo && h("span", { className: "fila-ext" }, listaNombre || "Otra lista"))),
+      h("div", { className: "fila-pre" }, h("strong", null, formatMoney(p.cashPrice), h(ChevSvg, { s: 13 })), p.unidad && h("small", null, p.unidad)));
+  };
+  // Una pieza con un precio por variante (pulido Tradicional y Zylstra): cada precio abre su ficha
+  var FilaVariantes = ({ fila, variantes, sinFoto, onOpen, imageOverrides }) => {
+    const src = imgSrc(fila.ref, imageOverrides);
+    return h("div", { className: "fila var" + (sinFoto ? " sin-foto" : "") },
+      !sinFoto && h("div", { className: "fila-img" }, h(LazyImage, { key: src, src, alt: "", codigo: fila.ref.codigo })),
+      h("div", { className: "fila-txt" },
+        h("div", { className: "fila-nom" }, h("span", { className: "fila-tit" }, fila.titulo), fila.detalle && h("span", { className: "fila-det" }, fila.detalle)),
+        h("div", { className: "fila-vars" }, variantes.map((v, i) => {
+          const p = fila.celdas[i];
+          return p
+            ? h("button", { key: v.nombre, type: "button", className: "var-btn", onClick: () => onOpen(p.id) }, h("small", null, v.nombre), h("strong", null, formatMoney(p.cashPrice)))
+            : h("span", { key: v.nombre, className: "var-btn no" }, h("small", null, v.nombre), h("em", null, "No se hace"));
+        }))));
+  };
+  var SeccionCatalogo = ({ s, conFamilia, etiquetaLista, onOpen, imageOverrides }) => h("section", { className: "cat-sec", id: s.key },
+    h("div", { className: "cat-sec-head" },
+      conFamilia && s.familia && h("span", { className: "cat-sec-fam" }, s.familia),
+      h("div", { className: "cat-sec-tit" }, h("h2", null, s.titulo), h("span", { className: "cat-count" }, s.cuenta)),
+      s.nota && h("p", { className: "cat-sec-nota" }, s.nota),
+      s.variantes.length > 0 && h("div", { className: "cat-sec-vars" }, s.variantes.map((v) => h("span", { key: v.nombre }, h("strong", null, v.nombre), v.nota ? " \xB7 " + v.nota.replace(/\.$/, "") : "")))),
+    s.bloques.map((b) => h("div", { className: "cat-blo", key: b.sub || "_" },
+      (b.sub || b.foto) && h("div", { className: "cat-blo-head" },
+        b.foto && h("div", { className: "cat-blo-img" }, h("img", { src: imgSrc(b.foto, imageOverrides), alt: "", loading: "lazy", onError: (e) => { e.target.parentNode.style.display = "none"; } })),
+        b.sub && h("h3", null, b.sub)),
+      h("div", { className: "filas" }, b.filas.map((f) => f.tipo === "var"
+        ? h(FilaVariantes, { key: f.key, fila: f, variantes: s.variantes, sinFoto: !!b.foto, onOpen, imageOverrides })
+        : h(FilaCatalogo, { key: f.key, p: f.p, externo: f.externo, listaNombre: f.externo ? etiquetaLista(f.p.lista) : "", sinFoto: !!b.foto, onOpen, imageOverrides }))))),
+    s.sinPrecio.length > 0 && h("div", { className: "cat-sp" }, s.sinPrecio.map((x) => h("div", { key: x.id, className: "cat-sp-fila" },
+      h("span", null, h("strong", null, x.name), x.detalle && h("small", null, x.detalle)),
+      h("em", null, x.precioTexto)))));
+  // Precio de un repuesto o servicio en su ficha: sin cuotas ni inicial (siempre es al contado)
+  var PrecioCatalogo = ({ product, auto, autoPrice, descuento, nota, aviso }) => h(React.Fragment, null,
+    !auto
+      ? h("div", { className: "price-block summary" },
+          h("div", { className: "price-lbl" }, "PRECIO AL CLIENTE"),
+          h("div", { className: "price-big" }, formatMoney(product.cashPrice), product.unidad && h("span", { className: "price-uni" }, product.unidad)))
+      : h("div", { className: "auto-ticket summary" },
+          h("div", { className: "tk-line" }, h("span", null, "Precio al cliente"), h("span", null, formatMoney(product.cashPrice))),
+          h("div", { className: "tk-line discount" }, h("span", null, "Tu ganancia"), h("span", null, formatMoney(descuento))),
+          h("div", { className: "tk-total" }, h("span", null, "PRECIO ASESOR"), h("span", null, formatMoney(autoPrice)))),
+    nota && h("div", { className: "info-banner blue" }, h(InfoSvg, null), h("span", null, nota)),
+    aviso && h("p", { className: "cat-pie" }, aviso));
+  // Admin: precio de cliente y de asesor de un servicio (pasa por cot_servicio_guardar, que valida la sesión de admin)
+  var ServicioPrecioAdmin = ({ codigo, precio, asesor, onMsg }) => {
+    const [c, setC] = useState(precio != null ? String(precio) : "");
+    const [a, setA] = useState(asesor != null ? String(asesor) : "");
+    const [busy, setBusy] = useState(false);
+    const guardar = async () => {
+      const pc = Number(c), pa = a.trim() === "" ? null : Number(a);
+      if (c.trim() === "" || !isFinite(pc) || pc <= 0) { onMsg("Precio invalido en " + codigo); return; }
+      if (pa != null && (!isFinite(pa) || pa <= 0 || pa > pc)) { onMsg("El precio de asesor no puede ser mayor que el del cliente"); return; }
+      if (!sb) { onMsg("Sin conexion a Supabase"); return; }
+      setBusy(true);
+      onMsg("Guardando " + codigo + "…");
+      try {
+        const { error } = await sb.rpc("cot_servicio_guardar", { p_token: adminTok() || null, p_codigo: codigo, p_precio: pc, p_precio_asesor: pa });
+        if (error) throw error;
+        onMsg("Servicio actualizado: cliente " + formatMoney(pc) + (pa != null ? ", asesor " + formatMoney(pa) : ", sin precio de asesor") + ". Se ve al recargar.");
+        try { localStorage.removeItem(CATALOG_CACHE_KEY); } catch (e) {}
+      } catch (e) {
+        onMsg("No se pudo guardar: " + (e.message || e));
+      }
+      setBusy(false);
+    };
+    return h("div", { className: "admin-repprecio" },
+      h("label", null, "Precio cliente", h("input", { type: "number", inputMode: "decimal", value: c, onChange: (e) => setC(e.target.value) })),
+      h("label", null, "Precio asesor", h("input", { type: "number", inputMode: "decimal", value: a, placeholder: "sin precio", onChange: (e) => setA(e.target.value) })),
+      h("button", { type: "button", className: "admin-okbtn", disabled: busy, onClick: guardar }, busy ? "Guardando…" : "Guardar"));
+  };
   var ProductTile = React.memo(({ product, cartQty, onOpen, imageOverrides }) => {
     const src = imgSrc(product, imageOverrides);
     const [conFoto, setConFoto] = useState(false);
@@ -899,7 +1168,7 @@
       onBack();
     } }, h(XSvg, { s: 13 }), " Imagen"), h("button", { className: "yt-btn yt-fs", onClick: toggleFs, title: isFs ? "Reducir" : "Maximizar" }, isFs ? h(MinimizeSvg, null) : h(MaximizeSvg, null)), h("button", { className: "yt-btn yt-mute", onClick: toggleMute, title: muted ? "Activar sonido" : "Silenciar" }, muted ? h(VolMuteSvg, null) : h(VolOnSvg, null)));
   };
-  var ProductModal = ({ product, bonoInfo, cartQty, imageOverrides, videoLinks, metas, reglasLista, textoVideo, onAdd, onSub, onRemove, onViewCart, onClose }) => {
+  var ProductModal = ({ product, bonoInfo, cartQty, imageOverrides, videoLinks, metas, reglasLista, textoVideo, notaGrupo, onAdd, onSub, onRemove, onViewCart, onClose }) => {
     const [modo, setModo] = useState("cliente");
     const [playing, setPlaying] = useState(false);
     const [payState, setPayState] = useState(null);
@@ -953,7 +1222,8 @@
       };
     }, [product, imageOverrides]);
     if (!product) return null;
-    const permiteAuto = !reglasLista || reglasLista.autocompra !== false;
+    const esCat = !!product.esCat;     // repuesto o servicio: ficha corta, sin cuotas ni puntos
+    const permiteAuto = (!reglasLista || reglasLista.autocompra !== false) && !(product.esServicio && product.autoPrice == null);
     const permiteCredito = !reglasLista || reglasLista.credito !== false;
     const auto = permiteAuto && modo === "auto";
     const autoPrice = product.autoPrice != null ? product.autoPrice : Finanzas.precioAutocompra(product.cashPrice, product.internalCommission);
@@ -1064,7 +1334,7 @@
       }
       setCapturing(false);
     };
-    return h("div", { className: "modal-overlay", onClick: onClose }, h("div", { className: `modal-box ${auto ? "mode-auto" : ""}`, onClick: (e) => e.stopPropagation() }, !playing && h("button", { className: "modal-close", onClick: onClose }, h(XSvg, { s: 18 })), h("div", { className: "modal-scroll" }, h("div", { className: `modal-img ${playing && embed ? "playing" : ""}` }, playing && embed ? h("div", { className: "modal-video" }, embed.type === "youtube" ? h(YouTubePlayer, { id: embed.id, onBack: () => setPlaying(false) }) : embed.type === "video" ? h(FileVideoPlayer, { src: embed.src, name: product.name, shareText: textoVideo, onBack: () => setPlaying(false) }) : h(React.Fragment, null, h("button", { className: "video-back", onClick: () => setPlaying(false) }, h(XSvg, { s: 13 }), " Imagen"), h("iframe", { src: embed.src, title: "Video del producto", allow: "autoplay; encrypted-media; fullscreen", allowFullScreen: true }))) : h(React.Fragment, null, h(LazyImage, { key: src, src, alt: product.name, codigo: product.codigo, onFoto: setConFoto }), !conFoto && h("span", { className: "ptag", style: { background: "var(--blue)" } }, "N\xB0 ", product.orden), embed && h("div", { className: "play-overlay", onClick: () => setPlaying(true) }, h("div", { className: "play-btn" }, h("div", { className: "play-circle" }, h(PlaySvg, { s: 26 })), h("span", { className: "play-label" }, "Ver video"))), embed && h(BotonVideoWa, { src: embed.type === "video" ? embed.src : videoUrl, name: product.name, shareText: textoVideo, pill: true }))), h("div", { className: "modal-info" }, h("h3", { className: "pcard-name" }, product.name), h("div", { className: "pcard-code" }, "C\xF3d. ", product.codigo), product.gift && h("div", { className: "gift-row" }, h(GiftSvg, null), h("span", null, "De Regalo: ", product.gift)), permiteAuto && h("div", { className: "mode-tabs" }, h("button", { className: `mode-tab ${!auto ? "on" : ""}`, onClick: () => setModo("cliente") }, "Precio Cliente"), h("button", { className: `mode-tab ${auto ? "on auto" : ""}`, onClick: () => setModo("auto") }, "Precio Autocompra")), !auto ? h("div", { className: "pcard-content fade-in" }, h(PaymentBlock, { base: product.cashPrice, auto: false, summaryMode: "cliente", soloContado: !permiteCredito, pagoTotal: !permiteCredito, priceData: { regularPrice: product.regularPrice, cashPrice: product.cashPrice, hasPromo }, onState: setPayState }), h("div", { className: "points-note" }, h(SparkSvg, null), h("span", null, bonoVigente2 ? h(React.Fragment, null, "Esta venta da ", h("strong", null, product.points.toLocaleString("es-PE"), " pts"), ". Con el +", bonoInfo.porcentaje, "% vigente llega a ", h("strong", { className: "pts-alto" }, pts.toLocaleString("es-PE"), " pts"), ".") : h(React.Fragment, null, "Esta venta da ", h("strong", null, pts.toLocaleString("es-PE"), " pts"), "."))), muestraPremio && h(GananciaVenta, { vc: product.valorComisionable, puntos: pts })) : h("div", { className: "pcard-content fade-in" }, h(PaymentBlock, { base: autoPrice, auto: true, baseCliente: product.cashPrice, comparativo: true, summaryMode: "auto", priceData: { regularPrice: product.regularPrice, cashPrice: product.cashPrice, autoPrice, descuento, hasPromo }, onState: setPayState }), h("div", { className: "incentives" }, h("div", { className: "inc-header" }, h(SparkSvg, null), h("span", null, bonoVigente2 ? h(React.Fragment, null, "Esta autocompra da ", h("strong", null, product.points.toLocaleString("es-PE"), " pts"), ". Con el +", bonoInfo.porcentaje, "% vigente llega a ", h("strong", { className: "pts-alto" }, pts.toLocaleString("es-PE"), " pts"), ".") : h(React.Fragment, null, "Esta autocompra te da ", h("strong", null, pts.toLocaleString("es-PE"), " pts"), "."))), muestraPremio && (!metaInfo.alcanzado ? h("div", { className: "inc-level pending" }, h("p", null, "Si te encuentras en tus primeras 4 semanas, te faltan ", h("strong", null, "solo ", metaInfo.faltante, " pts"), " y ", h("strong", null, "solo ", metaInfo.meta.afiliados, " afiliados"), " para ganar:"), h("div", { className: "prize-row" }, h(TrophySvg, null), h("span", null, metaInfo.meta.premio))) : h("div", { className: "inc-level achieved" }, h("p", null, metaInfo.esTope ? "\xA1Felicidades!" : "\xA1Excelente!", " Si te encuentras en tus primeras 4 semanas, con ", h("strong", null, "solo ", metaInfo.meta.afiliados, " afiliados"), " ganas:"), h("div", { className: "prize-row ok" }, h(TrophySvg, null), h("span", null, metaInfo.meta.premio))))), muestraPremio && h(GananciaEquipo, { vc: product.valorComisionable, puntos: pts })))), h("div", { className: "modal-foot" }, capErr && h("div", { className: "cap-err" }, capErr), h("div", { className: "quote-actions" }, h("button", { className: "share-quote-btn", onClick: shareQuote, disabled: capturing }, h(ShareSvg, { s: 17 }), " ", capturing ? "Generando\u2026" : "Compartir cotizaci\xF3n"))), h("div", { className: "qc-holder" }, h("div", { className: "qc-card", ref: cardRef }, h("div", { className: "qc-head" }, h("span", { className: "qc-brand" }, "RENA WARE"), h("span", { className: "qc-date" }, fechaHoy)), h("div", { className: "qc-photo" }, h("img", { className: "qc-img", src: cardImg, alt: "" })), h("div", { className: "qc-info" }, h("div", { className: "qc-name" }, product.name), h("div", { className: "qc-code" }, "Cod. ", product.codigo, " - N\xB0 ", product.orden), h("span", { className: `qc-mode ${psAuto ? "auto" : ""}` }, psAuto ? "Precio Autocompra" : "Precio Cliente"), ps.tab === "credito" && ps.creditTotal != null ? h(React.Fragment, null, h("div", { className: "qc-credit-big" }, h("div", { className: "qc-cb" }, h("span", { className: "qc-cb-l" }, "Inicial"), h("span", { className: "qc-cb-v" }, formatMoney(ps.inicialCredito)))), h("div", { className: "qc-opts-t" }, "Elige tu plan de cuotas"), h("div", { className: "qc-opts" }, (ps.opciones || []).map((o) => h("div", { key: o.meses, className: "qc-opt" }, h("span", { className: "qc-opt-m" }, o.meses, " cuotas de"), h("span", { className: "qc-opt-v" }, psAuto && o.cuotaCliente ? h(React.Fragment, null, h("span", { className: "qc-strike2" }, formatMoney(o.cuotaCliente)), formatMoney(o.cuota)) : formatMoney(o.cuota)))))) : psAuto ? h("div", { className: "qc-small" }, hasPromo && h("div", { className: "qc-srow" }, h("span", null, "Precio regular"), h("span", { className: "strike" }, formatMoney(product.regularPrice))), h("div", { className: "qc-srow" }, h("span", null, "Precio contado"), h("span", null, formatMoney(product.cashPrice))), h("div", { className: "qc-srow" }, h("span", null, "Menos tu descuento"), h("span", { className: "g" }, "- ", formatMoney(descuento))), h("div", { className: "qc-bigtotal" }, h("span", null, "Tu precio (contado)"), h("strong", null, formatMoney(autoPrice)))) : h("div", { className: "qc-small" }, hasPromo && h("div", { className: "qc-srow" }, h("span", null, "Precio regular"), h("span", { className: "strike" }, formatMoney(product.regularPrice))), h("div", { className: "qc-bigtotal" }, h("span", null, "Precio contado"), h("strong", null, formatMoney(product.cashPrice))), ps.inicialContado != null && ps.inicialContado < product.cashPrice && h("div", { className: "qc-srow" }, h("span", null, "Inicial ", formatMoney(ps.inicialContado), " | Saldo ", formatMoney(ps.saldoContado)), h("span", null))), psAuto && h("div", { className: "qc-pts" }, h("div", { className: "qc-pts-t" }, bonoVigente2 ? "Si compras hoy, tu puntaje sube " + bonoInfo.porcentaje + "% y seria " + pts + " pts." : "Esta autocompra te da " + pts + " pts."), muestraPremio && h("div", { className: "qc-prize-line" }, "Si te encuentras en tus primeras 4 semanas, " + (!metaInfo.alcanzado ? "te faltan solo " + metaInfo.faltante + " pts y solo " + metaInfo.meta.afiliados + " afiliados para ganar:" : "con solo " + metaInfo.meta.afiliados + " afiliados ganas:")), muestraPremio && h("div", { className: "qc-prize-row" }, h(TrophySvg, { s: 16 }), h("span", { className: "qc-prize-name" }, metaInfo.meta.premio))))))));
+    return h("div", { className: "modal-overlay", onClick: onClose }, h("div", { className: `modal-box ${auto ? "mode-auto" : ""}`, onClick: (e) => e.stopPropagation() }, !playing && h("button", { className: "modal-close", onClick: onClose }, h(XSvg, { s: 18 })), h("div", { className: "modal-scroll" }, h("div", { className: `modal-img ${playing && embed ? "playing" : ""} ${esCat ? "baja" : ""}` }, playing && embed ? h("div", { className: "modal-video" }, embed.type === "youtube" ? h(YouTubePlayer, { id: embed.id, onBack: () => setPlaying(false) }) : embed.type === "video" ? h(FileVideoPlayer, { src: embed.src, name: product.name, shareText: textoVideo, onBack: () => setPlaying(false) }) : h(React.Fragment, null, h("button", { className: "video-back", onClick: () => setPlaying(false) }, h(XSvg, { s: 13 }), " Imagen"), h("iframe", { src: embed.src, title: "Video del producto", allow: "autoplay; encrypted-media; fullscreen", allowFullScreen: true }))) : h(React.Fragment, null, h(LazyImage, { key: src, src, alt: product.name, codigo: product.codigo, onFoto: setConFoto }), !conFoto && !esCat && h("span", { className: "ptag", style: { background: "var(--blue)" } }, "N\xB0 ", product.orden), embed && h("div", { className: "play-overlay", onClick: () => setPlaying(true) }, h("div", { className: "play-btn" }, h("div", { className: "play-circle" }, h(PlaySvg, { s: 26 })), h("span", { className: "play-label" }, "Ver video"))), embed && h(BotonVideoWa, { src: embed.type === "video" ? embed.src : videoUrl, name: product.name, shareText: textoVideo, pill: true }))), h("div", { className: "modal-info" }, esCat && h("div", { className: "pcard-eti" }, product.catRaw, product.sub && !product.detalleCorto ? " \xB7 " + product.sub : ""), h("h3", { className: "pcard-name" }, esCat ? product.titulo || product.name : product.name), esCat && product.detalleCorto && h("p", { className: "pcard-det" }, product.detalleCorto), esCat && product.detalle && product.detalle !== product.detalleCorto && h("p", { className: "pcard-det" }, product.detalle), !product.esServicio && h("div", { className: "pcard-code" }, "C\xF3d. ", product.codigo), product.gift && h("div", { className: "gift-row" }, h(GiftSvg, null), h("span", null, "De Regalo: ", product.gift)), permiteAuto && h("div", { className: "mode-tabs" }, h("button", { className: `mode-tab ${!auto ? "on" : ""}`, onClick: () => setModo("cliente") }, "Precio Cliente"), h("button", { className: `mode-tab ${auto ? "on auto" : ""}`, onClick: () => setModo("auto") }, esCat ? "Precio Asesor" : "Precio Autocompra")), esCat ? h("div", { className: "pcard-content fade-in", key: auto ? "asesor" : "cliente" }, h(PrecioCatalogo, { product, auto, autoPrice, descuento, nota: notaGrupo, aviso: reglasLista && reglasLista.aviso })) : !auto ? h("div", { className: "pcard-content fade-in" }, h(PaymentBlock, { base: product.cashPrice, auto: false, summaryMode: "cliente", soloContado: !permiteCredito, pagoTotal: !permiteCredito, priceData: { regularPrice: product.regularPrice, cashPrice: product.cashPrice, hasPromo }, onState: setPayState }), h("div", { className: "points-note" }, h(SparkSvg, null), h("span", null, bonoVigente2 ? h(React.Fragment, null, "Esta venta da ", h("strong", null, product.points.toLocaleString("es-PE"), " pts"), ". Con el +", bonoInfo.porcentaje, "% vigente llega a ", h("strong", { className: "pts-alto" }, pts.toLocaleString("es-PE"), " pts"), ".") : h(React.Fragment, null, "Esta venta da ", h("strong", null, pts.toLocaleString("es-PE"), " pts"), "."))), muestraPremio && h(GananciaVenta, { vc: product.valorComisionable, puntos: pts })) : h("div", { className: "pcard-content fade-in" }, h(PaymentBlock, { base: autoPrice, auto: true, baseCliente: product.cashPrice, comparativo: true, summaryMode: "auto", priceData: { regularPrice: product.regularPrice, cashPrice: product.cashPrice, autoPrice, descuento, hasPromo }, onState: setPayState }), h("div", { className: "incentives" }, h("div", { className: "inc-header" }, h(SparkSvg, null), h("span", null, bonoVigente2 ? h(React.Fragment, null, "Esta autocompra da ", h("strong", null, product.points.toLocaleString("es-PE"), " pts"), ". Con el +", bonoInfo.porcentaje, "% vigente llega a ", h("strong", { className: "pts-alto" }, pts.toLocaleString("es-PE"), " pts"), ".") : h(React.Fragment, null, "Esta autocompra te da ", h("strong", null, pts.toLocaleString("es-PE"), " pts"), "."))), muestraPremio && (!metaInfo.alcanzado ? h("div", { className: "inc-level pending" }, h("p", null, "Si te encuentras en tus primeras 4 semanas, te faltan ", h("strong", null, "solo ", metaInfo.faltante, " pts"), " y ", h("strong", null, "solo ", metaInfo.meta.afiliados, " afiliados"), " para ganar:"), h("div", { className: "prize-row" }, h(TrophySvg, null), h("span", null, metaInfo.meta.premio))) : h("div", { className: "inc-level achieved" }, h("p", null, metaInfo.esTope ? "\xA1Felicidades!" : "\xA1Excelente!", " Si te encuentras en tus primeras 4 semanas, con ", h("strong", null, "solo ", metaInfo.meta.afiliados, " afiliados"), " ganas:"), h("div", { className: "prize-row ok" }, h(TrophySvg, null), h("span", null, metaInfo.meta.premio))))), muestraPremio && h(GananciaEquipo, { vc: product.valorComisionable, puntos: pts })))), h("div", { className: "modal-foot" }, capErr && h("div", { className: "cap-err" }, capErr), h("div", { className: "quote-actions" }, h("button", { className: "share-quote-btn", onClick: shareQuote, disabled: capturing }, h(ShareSvg, { s: 17 }), " ", capturing ? "Generando\u2026" : "Compartir cotizaci\xF3n"))), h("div", { className: "qc-holder" }, h("div", { className: "qc-card", ref: cardRef }, h("div", { className: "qc-head" }, h("span", { className: "qc-brand" }, "RENA WARE"), h("span", { className: "qc-date" }, fechaHoy)), h("div", { className: "qc-photo" }, h("img", { className: "qc-img", src: cardImg, alt: "" })), h("div", { className: "qc-info" }, h("div", { className: "qc-name" }, product.name), h("div", { className: "qc-code" }, esCat ? (product.esServicio ? [product.catRaw, product.unidad].filter(Boolean).join(" \xB7 ") : "Cod. " + product.codigo) : h(React.Fragment, null, "Cod. ", product.codigo, " - N\xB0 ", product.orden)), h("span", { className: `qc-mode ${psAuto ? "auto" : ""}` }, psAuto ? (esCat ? "Precio Asesor" : "Precio Autocompra") : "Precio Cliente"), ps.tab === "credito" && ps.creditTotal != null ? h(React.Fragment, null, h("div", { className: "qc-credit-big" }, h("div", { className: "qc-cb" }, h("span", { className: "qc-cb-l" }, "Inicial"), h("span", { className: "qc-cb-v" }, formatMoney(ps.inicialCredito)))), h("div", { className: "qc-opts-t" }, "Elige tu plan de cuotas"), h("div", { className: "qc-opts" }, (ps.opciones || []).map((o) => h("div", { key: o.meses, className: "qc-opt" }, h("span", { className: "qc-opt-m" }, o.meses, " cuotas de"), h("span", { className: "qc-opt-v" }, psAuto && o.cuotaCliente ? h(React.Fragment, null, h("span", { className: "qc-strike2" }, formatMoney(o.cuotaCliente)), formatMoney(o.cuota)) : formatMoney(o.cuota)))))) : psAuto ? h("div", { className: "qc-small" }, hasPromo && h("div", { className: "qc-srow" }, h("span", null, "Precio regular"), h("span", { className: "strike" }, formatMoney(product.regularPrice))), h("div", { className: "qc-srow" }, h("span", null, esCat ? "Precio al cliente" : "Precio contado"), h("span", null, formatMoney(product.cashPrice))), h("div", { className: "qc-srow" }, h("span", null, esCat ? "Tu ganancia" : "Menos tu descuento"), h("span", { className: "g" }, esCat ? "" : "- ", formatMoney(descuento))), h("div", { className: "qc-bigtotal" }, h("span", null, esCat ? "Precio asesor" : "Tu precio (contado)"), h("strong", null, formatMoney(autoPrice)))) : h("div", { className: "qc-small" }, hasPromo && h("div", { className: "qc-srow" }, h("span", null, "Precio regular"), h("span", { className: "strike" }, formatMoney(product.regularPrice))), h("div", { className: "qc-bigtotal" }, h("span", null, "Precio contado"), h("strong", null, formatMoney(product.cashPrice))), ps.inicialContado != null && ps.inicialContado < product.cashPrice && h("div", { className: "qc-srow" }, h("span", null, "Inicial ", formatMoney(ps.inicialContado), " | Saldo ", formatMoney(ps.saldoContado)), h("span", null))), psAuto && !esCat && h("div", { className: "qc-pts" }, h("div", { className: "qc-pts-t" }, bonoVigente2 ? "Si compras hoy, tu puntaje sube " + bonoInfo.porcentaje + "% y seria " + pts + " pts." : "Esta autocompra te da " + pts + " pts."), muestraPremio && h("div", { className: "qc-prize-line" }, "Si te encuentras en tus primeras 4 semanas, " + (!metaInfo.alcanzado ? "te faltan solo " + metaInfo.faltante + " pts y solo " + metaInfo.meta.afiliados + " afiliados para ganar:" : "con solo " + metaInfo.meta.afiliados + " afiliados ganas:")), muestraPremio && h("div", { className: "qc-prize-row" }, h(TrophySvg, { s: 16 }), h("span", { className: "qc-prize-name" }, metaInfo.meta.premio))))))));
   };
   var BonoSemanaAdmin = ({ bs, setConfig }) => {
     const set = (campo, val) => setConfig((c) => ({ ...c, bonoSemana: { ...leerBonoSemana(c), [campo]: val } }));
@@ -1411,7 +1681,7 @@
         const coincide = esLista ? p.lista === listaKey && !p.categoria : p.categoria === catFilter;
         if (coincide && !vistos.has(p.codigo)) {
           vistos.add(p.codigo);
-          out.push({ codigo: p.codigo, nombre: p.name, num: p.orden, esRepuesto: p.precioAsesorFijo != null, precioAsesor: p.precioAsesorFijo, precioCliente: p.cashPrice, precioManual: p.precioManual });
+          out.push({ codigo: p.codigo, nombre: p.esServicio && p.variante ? p.variante + " \xB7 " + p.name : p.name, num: p.orden, esRepuesto: p.precioAsesorFijo != null, precioAsesor: p.precioAsesorFijo, precioCliente: p.cashPrice, precioManual: p.precioManual, esServicio: !!p.esServicio, precioAsesorServ: p.autoPrice, imagenBase: p.image });
         }
       });
       return out;
@@ -1422,13 +1692,13 @@
     }, onKeyDown: (e) => e.key === "Enter" && login(), placeholder: "Clave de administrador", autoFocus: true }), passErr && h("span", { className: "admin-login-err" }, passErr), h("button", { className: "admin-btn-main", onClick: login }, "Ingresar")) : h(React.Fragment, null, h("div", { className: "admin-tabs" }, h("button", { className: `admin-tab ${tab === "imagenes" ? "on" : ""}`, onClick: () => setTab("imagenes") }, "Im\xE1genes"), h("button", { className: `admin-tab ${tab === "videos" ? "on" : ""}`, onClick: () => setTab("videos") }, "Videos"), h("button", { className: `admin-tab ${tab === "bono" ? "on" : ""}`, onClick: () => setTab("bono") }, "Puntaje extra"), h("button", { className: `admin-tab ${tab === "premios" ? "on" : ""}`, onClick: () => setTab("premios") }, "Premios"), h("button", { className: `admin-tab ${tab === "sinonimos" ? "on" : ""}`, onClick: () => setTab("sinonimos") }, "B\xFAsqueda"), h("button", { className: `admin-tab ${tab === "asesores" ? "on" : ""}`, onClick: () => setTab("asesores") }, "Asesores"), h("button", { className: `admin-tab ${tab === "actividad" ? "on" : ""}`, onClick: () => setTab("actividad") }, "Actividad")), h("div", { className: "admin-body" }, !sbReady2 && h("div", { className: "info-banner orange", style: { marginBottom: 12 } }, h(AlertSvg, null), h("span", null, "Modo local: edita ", h("strong", null, "SUPABASE_URL"), " y ", h("strong", null, "SUPABASE_ANON_KEY"), " al inicio del archivo para que los cambios se publiquen a TODOS los visitantes. Por ahora se guardan solo en este equipo.")), tab === "imagenes" ? h(React.Fragment, null, h("p", { className: "admin-note" }, "Sube la ", h("strong", null, "foto"), " de cada producto (recomendado: asi sale bien en las capturas para compartir) o pega un link. Maximo 10 MB."), h("div", { className: "admin-lote" }, h("label", { className: `admin-upbtn lote ${lote.activo ? "busy" : ""}` }, lote.activo ? "Subiendo " + lote.hechas + " de " + lote.total + "\u2026" : "Subir muchas fotos de una vez", h("input", { type: "file", accept: "image/*", multiple: true, disabled: lote.activo, onChange: (e) => { subirLote(e.target.files); e.target.value = ""; } })), h("span", { className: "admin-lote-hint" }, "Elige todas las fotos juntas. Cada una se asigna sola al producto por el codigo que lleva en el nombre del archivo (ejemplo ", h("strong", null, "382000.webp"), ").")), lote.msg && h("div", { className: "info-banner blue", style: { marginBottom: 10 } }, h(InfoSvg, null), h("span", null, lote.msg)), upErr && h("div", { className: "info-banner red", style: { marginBottom: 10 } }, h(AlertSvg, null), h("span", null, upErr)), repMsg && h("div", { className: "info-banner blue", style: { marginBottom: 10 } }, h(InfoSvg, null), h("span", null, repMsg)), h("div", { className: "admin-catbar" }, filtros.map((c) => h("button", { key: c.key, className: `admin-catbtn ${catFilter === c.key ? "on" : ""}`, onClick: () => setCatFilter(c.key) }, c.label))), prods.map((p) => {
       const cur = config.imagenes[p.codigo] || "";
       const up = uploadingCode === "img-" + p.codigo;
-      return h("div", { key: p.codigo, className: "admin-imgrow" }, h("div", { className: "admin-imgthumb" }, cur ? h("img", { src: cur, alt: "", onError: (e) => {
+      return h("div", { key: p.codigo, className: "admin-imgrow" }, h("div", { className: "admin-imgthumb" }, cur || p.imagenBase ? h("img", { key: cur || p.imagenBase, src: cur || p.imagenBase, alt: "", onError: (e) => {
         e.target.style.display = "none";
       } }) : h("span", null, "\u2014")), h("div", { className: "admin-imgmain" }, h("div", { className: "admin-imgname" }, "N\xB0 ", p.num, " \xB7 ", p.nombre), h("div", { className: "admin-vidrow" }, h("label", { className: `admin-upbtn ${up ? "busy" : ""}` }, up ? "Subiendo\u2026" : cur ? "Cambiar foto" : "Subir foto", h("input", { type: "file", accept: "image/*", disabled: up, onChange: (e) => {
         const f = e.target.files && e.target.files[0];
         onPickImage(p.codigo, f);
         e.target.value = "";
-      } })), cur && h("button", { className: "admin-rmbtn", onClick: () => setImagen(p.codigo, "") }, "Quitar")), h("input", { key: cur, type: "url", defaultValue: cur, placeholder: "o pega un link (https://...)", onBlur: (e) => setImagen(p.codigo, e.target.value.trim()), onKeyDown: (e) => e.key === "Enter" && e.target.blur() }), p.esRepuesto && h("div", { className: "admin-repprecio" }, h("span", { className: "admin-repasesor" }, "Asesor ", formatMoney(p.precioAsesor)), h("label", null, "Precio cliente", h("input", { type: "number", inputMode: "decimal", defaultValue: repPrecio[p.codigo] != null ? repPrecio[p.codigo] : p.precioCliente, onBlur: (e) => guardarPrecioRepuesto(p.codigo, e.target.value), onKeyDown: (e) => e.key === "Enter" && e.target.blur() })), h("button", { className: "admin-rmbtn", onClick: () => guardarPrecioRepuesto(p.codigo, "") }, "Usar factor"))));
+      } })), cur && h("button", { className: "admin-rmbtn", onClick: () => setImagen(p.codigo, "") }, "Quitar")), h("input", { key: cur, type: "url", defaultValue: cur, placeholder: "o pega un link (https://...)", onBlur: (e) => setImagen(p.codigo, e.target.value.trim()), onKeyDown: (e) => e.key === "Enter" && e.target.blur() }), p.esRepuesto && h("div", { className: "admin-repprecio" }, h("span", { className: "admin-repasesor" }, "Asesor ", formatMoney(p.precioAsesor)), h("label", null, "Precio cliente", h("input", { type: "number", inputMode: "decimal", defaultValue: repPrecio[p.codigo] != null ? repPrecio[p.codigo] : p.precioCliente, onBlur: (e) => guardarPrecioRepuesto(p.codigo, e.target.value), onKeyDown: (e) => e.key === "Enter" && e.target.blur() })), h("button", { className: "admin-rmbtn", onClick: () => guardarPrecioRepuesto(p.codigo, "") }, "Usar factor")), p.esServicio && h(ServicioPrecioAdmin, { codigo: p.codigo, precio: p.precioCliente, asesor: p.precioAsesorServ, onMsg: setRepMsg })));
     })) : tab === "videos" ? h(React.Fragment, null, h("p", { className: "admin-note" }, "Sube el ", h("strong", null, "video MP4"), " de cada producto (asi los asesores pueden descargarlo y enviarlo por WhatsApp). Maximo 50 MB. Tambien puedes pegar un link de YouTube, pero ese queda solo para ver."), h("div", { className: "admin-textorow" }, h("label", null, "Mensaje que acompa\xF1a al video en WhatsApp", h("textarea", { rows: 3, defaultValue: (config.textos && config.textos.videoWhatsapp) || TEXTO_VIDEO_DEFAULT, onBlur: (e) => setConfig((c) => ({ ...c, textos: { ...c.textos || {}, videoWhatsapp: e.target.value } })) })), h("span", { className: "admin-textohint" }, "Usa ", h("strong", null, "{producto}"), " donde quieras que aparezca el nombre.")), upErr && h("div", { className: "info-banner red", style: { marginBottom: 10 } }, h(AlertSvg, null), h("span", null, upErr)), h("div", { className: "admin-catbar" }, filtros.map((c) => h("button", { key: c.key, className: `admin-catbtn ${catFilter === c.key ? "on" : ""}`, onClick: () => setCatFilter(c.key) }, c.label))), prods.map((p) => {
       const cur = config.videos[p.codigo] || "";
       const isFile = /\.(mp4|webm|mov|m4v)(\?.*)?$/i.test(cur) || cur.includes("/storage/v1/object/public/videos/");
@@ -1602,7 +1872,7 @@
         h("p", { className: "login-pie" }, "Una sola vez. Despu\xE9s entras directo.")));
   };
   function App() {
-    const [catalogo, setCatalogo] = useState({ listas: [], productos: [], piezas: [] });
+    const [catalogo, setCatalogo] = useState({ listas: [], productos: [], piezas: [], grupos: [], sinPrecio: [] });
     const [catalogoState, setCatalogoState] = useState("loading");
     const [activeLista, setActiveLista] = useState("general");
     const [activeCat, setActiveCat] = useState(TODAS_KEY);
@@ -1647,6 +1917,8 @@
     const [simOpen, setSimOpen] = useState(false);
     const [promosOpen, setPromosOpen] = useState(false);
     const sectionRefs = useRef({});
+    const navTopRef = useRef(null);
+    const [pasado, setPasado] = useState(false);     // la parte alta (listas y acciones) ya quedó fuera de la vista
     const searchInputRef = useRef(null);
     const clickScrolling = useRef(false);
     const adminTouched = useRef(false);
@@ -1683,7 +1955,7 @@
           const c = JSON.parse(raw);
           if (c && c.productos && c.productos.length) {
             aplicarReglas(c.reglas, c.factores);
-            setCatalogo({ listas: c.listas || [], productos: c.productos, piezas: c.piezas || [] });
+            setCatalogo({ listas: c.listas || [], productos: c.productos, piezas: c.piezas || [], grupos: c.grupos || [], sinPrecio: c.sinPrecio || [] });
             setCatalogoState("ok");
           }
         }
@@ -1756,11 +2028,13 @@
     const cartQtyOf = (id) => cart.find((i) => i.id === id)?.qty || 0;
     const selectedProduct = selectedId ? getProductById(selectedId) : null;
     const isSearching = searchQuery.trim().length > 0;
+    const vistaCat = useMemo(() => listaActual && listaActual.catalogo ? armarCatalogo(activeLista, catalogo.productos, catalogo.grupos, catalogo.sinPrecio, productIndex) : null, [listaActual, activeLista, catalogo, productIndex]);
     const searchResults = useMemo(() => {
       if (!isSearching) return [];
-      return productosLista.filter((p) => matchProduct(p, searchQuery, adminConfig.sinonimos));
-    }, [isSearching, searchQuery, productosLista, adminConfig.sinonimos]);
+      return (vistaCat ? vistaCat.buscables : productosLista).filter((p) => matchProduct(p, searchQuery, adminConfig.sinonimos));
+    }, [isSearching, searchQuery, productosLista, vistaCat, adminConfig.sinonimos]);
     const secciones = useMemo(() => {
+      if (vistaCat) return vistaCat.chips.length > 1 ? [{ key: TODAS_KEY, label: "Todas" }, ...vistaCat.chips] : [];
       const porOrden = (a, b) => (a.orden || 0) - (b.orden || 0);
       let base = [];
       if (productosLista.some((p) => p.categoria)) {
@@ -1775,14 +2049,44 @@
       }
       if (base.length < 2) return [];
       return [{ key: TODAS_KEY, label: "Todas", color: "#1e40af", colorLight: "#eff6ff", products: [...productosLista].sort(porOrden) }, ...base];
-    }, [productosLista]);
+    }, [productosLista, vistaCat]);
     const usaSecciones = secciones.length > 0;
     useEffect(() => {
       if (secciones.length && !secciones.some((s) => s.key === activeCat)) setActiveCat(TODAS_KEY);
     }, [secciones, activeCat]);
+    // Alto de la parte que no se queda pegada: bajando eso, el buscador y los filtros quedan justo bajo la cabecera
+    const altoNavTop = () => navTopRef.current ? navTopRef.current.offsetHeight : 0;
+    const irArriba = () => {
+      try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch (e) { window.scrollTo(0, 0); }
+    };
     const scrollToCat = (key) => {
       setActiveCat(key);
-      try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch (e) { window.scrollTo(0, 0); }
+      const y = altoNavTop();
+      if ((window.scrollY || 0) > y) window.scrollTo(0, y);
+    };
+    useEffect(() => {
+      const el = navTopRef.current;
+      if (!el || typeof IntersectionObserver === "undefined") return;
+      const obs = new IntersectionObserver(([e]) => setPasado(!e.isIntersecting), { rootMargin: "-60px 0px 0px 0px" });
+      obs.observe(el);
+      return () => obs.disconnect();
+    }, [verificando, sesion, adminOpen]);
+    useEffect(() => {
+      // al empezar a buscar, los resultados quedan arriba: en el celular el buscador sube bajo la cabecera
+      if (!isSearching) return;
+      const y = altoNavTop();
+      if ((window.scrollY || 0) > y || window.innerWidth < 700) window.scrollTo(0, y);
+    }, [isSearching]);
+    const etiquetaLista = (k) => {
+      const l = listas.find((x) => x.key === k);
+      return l ? l.labelCorto || l.label : k;
+    };
+    const notaDe = (p) => {
+      if (!p || !p.esCat) return "";
+      const de = (g) => { const d = (catalogo.grupos || []).find((x) => x.lista_id === p.lista && x.grupo === g); return d && d.nota || ""; };
+      const i = (p.catRaw || "").indexOf(" \xB7 ");
+      const propia = de(p.catRaw), base = i > 0 ? de(p.catRaw.slice(0, i)) : "";
+      return [propia && i > 0 ? propia.replace(/\.$/, "") + "." : propia, base].filter(Boolean).join(" ");
     };
     const closeSearch = () => {
       setSearchQuery("");
@@ -1804,13 +2108,13 @@
     const renderTile = (p) => h(ProductTile, { key: p.id, product: p, cartQty: cartQtyOf(p.id), onOpen: openProduct, imageOverrides: overrides });
     if (verificando) return h("div", { className: "login-wrap" }, h("div", { className: "login-box" }, h("p", { className: "login-sub" }, "Un momento\u2026")));
     if (!sesion && !adminOpen) return h(Ingreso, { onEntrar: (d) => { sesionTok = d.token; setSesion(d); } });
-    return h("div", { className: "app" }, h("header", { className: "header" }, h("div", { className: "header-in" }, h("h1", { className: "header-t" }, "Precios y Promociones"), h("div", { className: "header-right" }, bonoActivoLista.activo && h("div", { className: "bonus-pill", title: (bonoInfo.semana ? `${bonoInfo.semana}% por ser primera semana del per\xEDodo` : "Puntaje adicional vigente") + (bonoActivoLista.extra ? ` + ${bonoActivoLista.extra}% de esta lista` : "") }, h(ClockSvg, null), h("span", null, "+", bonoActivoLista.porcentaje, "%"))))), h("main", { className: "main" }, h("div", { className: "sticky-nav" }, listas.length > 1 && listaActual && listaActual.actualizada && h("div", { className: "lista-fecha" }, "Actualizada al ", new Date(listaActual.actualizada).toLocaleDateString("es-PE", { day: "2-digit", month: "short", year: "numeric", timeZone: "America/Lima" })), h("div", { className: "lista-switch" }, listas.map((l) => h("button", { key: l.key, className: `lista-btn ${activeLista === l.key ? "on" : ""}`, onClick: () => {
+    return h("div", { className: "app" }, h("header", { className: "header" }, h("div", { className: "header-in" }, h("h1", { className: "header-t", onClick: irArriba }, "Precios y Promociones"), h("div", { className: "header-right" }, pasado && listaActual && h("button", { className: "header-lista", onClick: irArriba, title: "Volver arriba para cambiar de lista" }, h(ArribaSvg, null), h("span", null, listaActual.labelCorto || listaActual.label)), bonoActivoLista.activo && !(listaActual && listaActual.sinPuntos) && h("div", { className: "bonus-pill", title: (bonoInfo.semana ? `${bonoInfo.semana}% por ser primera semana del per\xEDodo` : "Puntaje adicional vigente") + (bonoActivoLista.extra ? ` + ${bonoActivoLista.extra}% de esta lista` : "") }, h(ClockSvg, null), h("span", null, "+", bonoActivoLista.porcentaje, "%"))))), h("main", { className: "main" }, h("div", { className: "nav-top", ref: navTopRef }, listas.length > 1 && listaActual && listaActual.actualizada && h("div", { className: "lista-fecha" }, "Actualizada al ", new Date(listaActual.actualizada).toLocaleDateString("es-PE", { day: "2-digit", month: "short", year: "numeric", timeZone: "America/Lima" })), h("div", { className: "lista-switch", style: { "--nd": listas.length <= 6 ? listas.length : Math.ceil(listas.length / 2) } }, listas.map((l, i) => h("button", { key: l.key, className: `lista-btn ${activeLista === l.key ? "on" : ""}`, style: { "--sp": repartoListas(listas.length)[i] }, onClick: () => {
       setActiveLista(l.key);
       setActiveCat(TODAS_KEY);
       setSimOpen(false);
       setPromosOpen(false);
       closeSearch();
-    }, title: l.label }, l.labelCorto || l.label))), !isSearching && h("div", { className: "acciones-row" }, listaActual && !listaActual.sinPuntos && h("button", { className: "accion-btn", onClick: () => { rastrear("simulador", { lista: activeLista }); setSimOpen(true); } }, h(SparkSvg, null), " Simulador de puntos"), h("button", { className: "accion-btn", onClick: () => { rastrear("comparador", { lista: activeLista }); setPromosOpen(true); } }, h(SearchSvg, { s: 15 }), " Buscador maestro")), h("div", { className: "nav-row" }, h("div", { className: "search-bar" }, h(SearchSvg, { s: 17 }), h("input", { type: "text", value: searchQuery, onChange: (e) => setSearchQuery(e.target.value), placeholder: "Buscar producto: nombre, c\xF3digo o N\xB0..." }), searchQuery && h("button", { className: "search-clear", onClick: () => setSearchQuery(""), title: "Limpiar b\xFAsqueda" }, h(XSvg, { s: 14 }))), usaSecciones && !isSearching && h("div", { className: "nav-tabs" }, secciones.map((c) => h("button", { key: c.key, className: `nav-tab ${activeCat === c.key ? "active" : ""}`, style: activeCat === c.key ? { background: c.colorLight, color: c.color, borderColor: "transparent" } : {}, onClick: () => scrollToCat(c.key) }, c.label))))), listaActual && listaActual.aviso && !isSearching && h("div", { className: "info-banner orange", style: { margin: "0 0 12px" } }, h(InfoSvg, null), h("span", null, listaActual.aviso)), catalogoState === "loading" ? h("div", { className: "empty-state" }, h("p", null, "Cargando lista de precios\u2026")) : catalogoState === "error" ? h("div", { className: "empty-state" }, h("p", null, "No se pudo cargar la lista de precios."), h("span", { style: { fontSize: 13, color: "#9ca3af" } }, "Revisa tu conexi\xF3n y vuelve a intentar.")) : isSearching ? h(React.Fragment, null, h("div", { className: "results-info" }, searchResults.length, " resultado", searchResults.length !== 1 ? "s" : "", ' para "', searchQuery, '"'), searchResults.length > 0 ? h("div", { className: "grid" }, searchResults.map(renderTile)) : h("div", { className: "empty-state" }, h("p", null, 'No se encontr\xF3 "', searchQuery, '"'), h("span", { style: { fontSize: 13, color: "#9ca3af" } }, "Prueba con otro nombre o el c\xF3digo del producto."))) : !usaSecciones ? productosLista.length === 0 ? h("div", { className: "empty-state" }, h("p", null, "Esta lista no tiene productos vigentes.")) : h("div", { className: "grid" }, productosLista.map(renderTile)) : (() => {
+    }, title: l.label }, l.labelCorto || l.label))), !isSearching && h("div", { className: "acciones-row" }, listaActual && !listaActual.sinPuntos && h("button", { className: "accion-btn", onClick: () => { rastrear("simulador", { lista: activeLista }); setSimOpen(true); } }, h(SparkSvg, null), " Simulador de puntos"), h("button", { className: "accion-btn", onClick: () => { rastrear("comparador", { lista: activeLista }); setPromosOpen(true); } }, h(SearchSvg, { s: 15 }), " Buscador maestro")), listaActual && listaActual.aviso && !isSearching && h("div", { className: "info-banner orange aviso-lista" }, h(InfoSvg, null), h("span", null, listaActual.aviso))), h("div", { className: `sticky-nav ${pasado ? "pegado" : ""}` }, h("div", { className: "nav-row" }, h("div", { className: "search-bar" }, h(SearchSvg, { s: 17 }), h("input", { type: "text", value: searchQuery, onChange: (e) => setSearchQuery(e.target.value), placeholder: vistaCat ? (activeLista === "servicios" ? "Buscar servicio…" : "Buscar repuesto: nombre o c\xF3digo…") : "Buscar producto: nombre, c\xF3digo o N\xB0..." }), searchQuery && h("button", { className: "search-clear", onClick: () => setSearchQuery(""), title: "Limpiar b\xFAsqueda" }, h(XSvg, { s: 14 }))), usaSecciones && !isSearching && h("div", { className: "nav-tabs" }, secciones.map((c) => h("button", { key: c.key, className: `nav-tab ${activeCat === c.key ? "active" : ""}`, onClick: () => scrollToCat(c.key) }, c.label))))), catalogoState === "loading" ? h("div", { className: "empty-state" }, h("p", null, "Cargando lista de precios\u2026")) : catalogoState === "error" ? h("div", { className: "empty-state" }, h("p", null, "No se pudo cargar la lista de precios."), h("span", { style: { fontSize: 13, color: "#9ca3af" } }, "Revisa tu conexi\xF3n y vuelve a intentar.")) : isSearching ? h(React.Fragment, null, h("div", { className: "results-info" }, searchResults.length, " resultado", searchResults.length !== 1 ? "s" : "", ' para "', searchQuery, '"'), searchResults.length > 0 ? (vistaCat ? h("div", { className: "filas" }, searchResults.map((p) => h(FilaCatalogo, { key: p.id, p, etiqueta: p.lista === activeLista ? p.catRaw + (p.sub ? " \xB7 " + p.sub : "") : "", externo: p.lista !== activeLista, listaNombre: etiquetaLista(p.lista), onOpen: openProduct, imageOverrides: overrides }))) : h("div", { className: "grid" }, searchResults.map(renderTile))) : h("div", { className: "empty-state" }, h("p", null, 'No se encontr\xF3 "', searchQuery, '"'), h("span", { style: { fontSize: 13, color: "#9ca3af" } }, "Prueba con otro nombre o el c\xF3digo del producto."))) : vistaCat ? (vistaCat.secciones.length === 0 ? h("div", { className: "empty-state" }, h("p", null, "Esta lista no tiene productos vigentes.")) : h("div", { className: "cat-wrap" }, vistaCat.secciones.filter((x) => activeCat === TODAS_KEY || x.chip === activeCat).map((x) => h(SeccionCatalogo, { key: x.key, s: x, conFamilia: activeCat === TODAS_KEY, etiquetaLista, onOpen: openProduct, imageOverrides: overrides })))) : !usaSecciones ? productosLista.length === 0 ? h("div", { className: "empty-state" }, h("p", null, "Esta lista no tiene productos vigentes.")) : h("div", { className: "grid" }, productosLista.map(renderTile)) : (() => {
       const sec = secciones.find((s) => s.key === activeCat) || secciones[0];
       return h(React.Fragment, null, h("div", { className: "cat-header" }, h("span", { className: "cat-dot", style: { background: sec.color } }), h("h2", null, sec.label), h("span", { className: "cat-count" }, sec.products.length)), h("div", { className: "grid" }, sec.products.map(renderTile)));
     })()), promosOpen && h(ComparadorPromos, { listas, productos: catalogo.productos, piezas: catalogo.piezas, onClose: () => setPromosOpen(false), onIr: (p) => {
@@ -1820,7 +2124,7 @@
       setActiveLista(p.lista);
       setActiveCat(TODAS_KEY);
       openProduct(p.id);
-    } }), simOpen && listaActual && h(SimuladorPuntos, { lista: listaActual, productos: productosLista, bono: bonoActivoLista.porcentaje || 0, onClose: () => setSimOpen(false) }), selectedProduct && h(ProductModal, { key: selectedProduct.id, product: selectedProduct, bonoInfo: bonoDe(selectedProduct.lista), cartQty: 0, imageOverrides: overrides, videoLinks: videos, metas: adminConfig.metas, reglasLista: listas.find((l) => l.key === selectedProduct.lista) || null, textoVideo: ((adminConfig.mensajes && adminConfig.mensajes[selectedProduct.codigo]) || (adminConfig.textos && adminConfig.textos.videoWhatsapp) || TEXTO_VIDEO_DEFAULT).replace(/\{producto\}/g, selectedProduct.name), onAdd: () => {
+    } }), simOpen && listaActual && h(SimuladorPuntos, { lista: listaActual, productos: productosLista, bono: bonoActivoLista.porcentaje || 0, onClose: () => setSimOpen(false) }), selectedProduct && h(ProductModal, { key: selectedProduct.id, product: selectedProduct, bonoInfo: bonoDe(selectedProduct.lista), cartQty: 0, imageOverrides: overrides, videoLinks: videos, metas: adminConfig.metas, reglasLista: listas.find((l) => l.key === selectedProduct.lista) || null, notaGrupo: notaDe(selectedProduct), textoVideo: ((adminConfig.mensajes && adminConfig.mensajes[selectedProduct.codigo]) || (adminConfig.textos && adminConfig.textos.videoWhatsapp) || TEXTO_VIDEO_DEFAULT).replace(/\{producto\}/g, selectedProduct.name), onAdd: () => {
     }, onSub: () => {
     }, onRemove: () => {
     }, onViewCart: () => {
@@ -1852,9 +2156,9 @@
         .icon-btn:hover,.icon-btn.active{background:rgba(255,255,255,.24)}
         .icon-badge{position:absolute;top:-5px;right:-5px;background:#ea580c;color:#fff;font-size:12px;font-weight:800;min-width:18px;height:18px;border-radius:100px;display:flex;align-items:center;justify-content:center;padding:0 4px;border:2px solid #0f172a}
         .main{max-width:1200px;margin:0 auto;padding:0 12px}
-        .sticky-nav{position:sticky;top:58px;z-index:40;background:var(--bg);padding:6px 0 5px}
-        .lista-switch{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:6px;width:100%;margin:0 0 8px}
-        .lista-btn{padding:10px 10px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;background:#fff;color:#475569;transition:all .18s;font-family:inherit;line-height:1.2;text-align:center;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+        .sticky-nav{position:sticky;top:58px;z-index:40;background:var(--bg);margin:0 -12px;padding:7px 12px 6px}
+        .lista-switch{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;width:100%;margin:0 0 8px}
+        .lista-btn{grid-column:span var(--sp,2);min-width:0;padding:10px 8px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;background:#fff;color:#475569;transition:all .18s;font-family:inherit;line-height:1.2;text-align:center;box-shadow:0 1px 2px rgba(0,0,0,.04)}
         .lista-btn:hover{border-color:#94a3b8;color:#0f172a}
         .lista-btn.on{background:var(--blue);border-color:var(--blue);color:#fff;box-shadow:0 3px 10px rgba(37,99,235,.32)}
         .nav-row{display:flex;flex-direction:column}
@@ -1867,7 +2171,7 @@
         .search-clear:hover{background:#e2e6ea}
         .nav-tabs::-webkit-scrollbar{display:none}
         .nav-tab{flex-shrink:0;padding:7px 13px;border:1px solid var(--border);border-radius:100px;font-size:12px;font-weight:600;cursor:pointer;transition:all .2s;background:#fff;color:var(--muted);white-space:nowrap;font-family:inherit}
-        .nav-tab:hover{border-color:#cbd5e1} .nav-tab.active{font-weight:700}
+        .nav-tab:hover{border-color:#cbd5e1} .nav-tab.active{font-weight:700;background:#0f172a;color:#fff;border-color:#0f172a}
         .results-info{padding:10px 4px 2px;font-size:12.5px;color:var(--muted);font-weight:600}
         .cat-section{scroll-margin-top:205px}
         .cat-header{display:flex;align-items:center;gap:8px;margin:18px 4px 10px;padding-bottom:8px;border-bottom:1.5px solid var(--border)}
@@ -1883,7 +2187,7 @@
         .tile{background:var(--card);border-radius:14px;border:1.5px solid var(--border);overflow:hidden;display:flex;flex-direction:column;transition:box-shadow .2s,border-color .2s}
         .tile:hover{box-shadow:0 4px 16px rgba(0,0,0,.09)}
         .tile.in-cart{border-color:#ea580c}
-        .tile-img{position:relative;aspect-ratio:1/1;cursor:pointer;background:#f3f4f6;overflow:hidden}
+        .tile-img{position:relative;aspect-ratio:1/1;cursor:pointer;background:#fff;overflow:hidden}
         .tile-img .lazy-img{object-fit:contain}
         .lazy-wrap{width:100%;height:100%;position:relative}
         .lazy-img{width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .4s ease} .lazy-img.loaded{opacity:1}
@@ -2091,8 +2395,6 @@
         .act-nom small{font-size:11px;color:var(--muted);font-weight:600;line-height:1.4}
         .sim-chip.on{border-color:var(--indigo);color:var(--indigoD);background:var(--indigoL)}
         .lista-fecha{display:block;text-align:right;font-size:11px;font-weight:600;color:var(--muted);margin:0 2px 5px}
-        .lista-switch{display:flex;flex-wrap:wrap;gap:6px}
-        .lista-btn{flex:1 1 calc(33.333% - 4px);min-width:92px}
         .acciones-row{display:flex;gap:6px;margin:0 0 7px}
         .accion-btn{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:10px 8px;border:1.5px solid var(--indigo);background:var(--indigoL);color:var(--indigoD);border-radius:11px;font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap}
         .accion-btn:active{transform:scale(.99)}
@@ -2322,9 +2624,89 @@
         @keyframes pulse{0%,100%{opacity:1}50%{opacity:.7}} @keyframes spin{to{transform:rotate(360deg)}}
         @media(max-width:640px){.header-t{font-size:14px}.nav-tab{font-size:11.5px;padding:7px 12px}.cat-section{scroll-margin-top:200px}.admin-box{height:92vh}}
         @media(max-width:400px){.bonus-pill{display:none}}
-        @media(min-width:700px){.sticky-nav{padding:8px 0 6px}.nav-row{flex-direction:row;align-items:center;gap:14px}.nav-tabs{flex:1 1 auto;min-width:0;margin:0;gap:6px}.nav-tab{padding:8px 15px;font-size:12.5px}.search-bar{margin:0;flex:0 0 300px;width:300px}}
-        @media(max-width:520px){.lista-switch{grid-auto-flow:row;grid-template-columns:1fr 1fr;grid-auto-columns:auto;gap:5px}.lista-btn{font-size:12px;padding:9px 6px}}
+        @media(min-width:700px){.sticky-nav{padding:8px 12px 7px}.nav-row{flex-direction:row;align-items:center;gap:14px}.nav-tabs{flex:1 1 auto;min-width:0;margin:0;gap:6px}.nav-tab{padding:8px 15px;font-size:12.5px}.search-bar{margin:0;flex:0 0 300px;width:300px}}
+        @media(max-width:520px){.lista-switch{gap:5px}.lista-btn{font-size:12px;padding:9px 6px}}
         .points-note{display:flex;align-items:flex-start;gap:7px;background:linear-gradient(135deg,var(--amberL),#fef3c7);border:1px solid #fde68a;border-radius:var(--rs);padding:10px 12px;font-size:12.5px;color:#78350f;line-height:1.45} .points-note svg{color:var(--amber);flex-shrink:0;margin-top:1px} .points-note strong{color:var(--amber);font-size:14px}
+        /* PARTE ALTA: las listas y las acciones ya no se quedan pegadas; solo el buscador y los filtros */
+        .nav-top{display:flow-root;padding-top:6px}
+        .aviso-lista{margin:0 0 8px}
+        .sticky-nav.pegado{box-shadow:0 10px 12px -12px rgba(15,23,42,.38)}
+        .sticky-nav .search-bar{margin:0 0 6px}
+        .header-t{min-width:0;cursor:pointer}
+        .header-lista{display:flex;align-items:center;gap:5px;max-width:46vw;background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.24);color:#fff;padding:6px 12px 6px 8px;border-radius:100px;font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer;animation:fadeIn .2s ease-out}
+        .header-lista:hover{background:rgba(255,255,255,.22)}
+        .header-lista span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .header-lista svg{flex-shrink:0}
+        @media(min-width:700px){.lista-switch{grid-template-columns:repeat(var(--nd,4),minmax(0,1fr))}.lista-btn{grid-column:auto}.acciones-row{justify-content:flex-start}.accion-btn{flex:0 0 auto;padding:10px 20px}.sticky-nav .search-bar{margin:0}}
+        /* CATÁLOGO (Repuestos y Servicios): secciones con su nota y filas con el precio a la vista */
+        .cat-sec{margin:0 0 26px}
+        .cat-sec-head{margin:14px 2px 0;padding-bottom:10px;border-bottom:1.5px solid var(--border)}
+        .cat-sec:first-child .cat-sec-head{margin-top:8px}
+        .cat-sec-fam{display:block;font-size:11px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--blue);margin-bottom:3px}
+        .cat-sec-tit{display:flex;align-items:center;gap:8px}
+        .cat-sec-tit h2{flex:1;min-width:0;font-size:17.5px;font-weight:800;letter-spacing:-.015em;line-height:1.2}
+        .cat-sec-nota{margin-top:5px;font-size:12.5px;line-height:1.5;color:#5b6472;max-width:78ch}
+        .cat-sec-vars{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+        .cat-sec-vars span{font-size:12px;color:#475569;background:#fff;border:1px solid var(--border);border-radius:100px;padding:4px 11px}
+        .cat-sec-vars strong{color:var(--text)}
+        .cat-blo{margin-top:13px}
+        .cat-blo-head{display:flex;align-items:center;gap:10px;margin:0 2px 7px}
+        .cat-blo-head h3{font-size:11.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#475569;line-height:1.35}
+        .cat-blo-img{width:104px;height:58px;border-radius:9px;overflow:hidden;background:#fff;border:1px solid var(--border);flex-shrink:0}
+        .cat-blo-img img{width:100%;height:100%;object-fit:contain;display:block}
+        .filas{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
+        @media(min-width:700px){.filas{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}}
+        @media(min-width:1080px){.filas{grid-template-columns:repeat(3,minmax(0,1fr))}}
+        .fila{display:flex;align-items:center;gap:11px;background:var(--card);border:1.5px solid var(--border);border-radius:13px;padding:9px 12px 9px 9px;min-height:78px;cursor:pointer;transition:box-shadow .18s,border-color .18s;-webkit-tap-highlight-color:transparent}
+        .fila:hover{border-color:#cfc9bf;box-shadow:0 4px 14px rgba(0,0,0,.08)}
+        .fila:active{background:#fbfaf8}
+        .fila:focus-visible,.var-btn:focus-visible,.header-lista:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+        .fila.var{cursor:default;align-items:flex-start}
+        .fila.var:hover{box-shadow:none;border-color:var(--border)}
+        .fila-img{width:78px;height:60px;border-radius:9px;overflow:hidden;background:#fff;border:1px solid #efebe5;flex-shrink:0}
+        .fila-img .lazy-img{object-fit:contain}
+        .fila-img .fallback-code{display:none}
+        .fila-img .img-fallback svg{width:20px;height:20px}
+        .fila-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+        .fila-eti{font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--blue);line-height:1.35}
+        .fila-tit{font-size:14.5px;font-weight:700;line-height:1.28;letter-spacing:-.005em}
+        .fila-det{font-size:12.8px;color:#5b6472;line-height:1.36;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+        .fila-cod{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11.8px;font-weight:600;color:#8b93a0;margin-top:1px}
+        .fila-ext{font-size:10px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--indigoD);background:var(--indigoL);border-radius:5px;padding:1px 6px}
+        .fila-pre{flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;text-align:right}
+        .fila-pre strong{display:flex;align-items:center;gap:1px;font-size:16.5px;font-weight:800;letter-spacing:-.015em;white-space:nowrap;line-height:1.2}
+        .fila-pre strong svg{color:#b4bac4;margin-right:-4px}
+        .fila-pre small{font-size:10.5px;font-weight:600;color:var(--muted);white-space:nowrap}
+        .fila-vars{display:flex;gap:6px;margin-top:7px}
+        .var-btn{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;padding:6px 10px 7px;border:1.5px solid #cbd5e1;border-radius:10px;background:#fff;color:var(--text);font-family:inherit;text-align:left;cursor:pointer;transition:border-color .15s,background .15s}
+        .var-btn:hover{border-color:var(--blue);background:var(--blueL)}
+        .var-btn small{font-size:10px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);line-height:1.5}
+        .var-btn strong{font-size:15.5px;font-weight:800;letter-spacing:-.01em;line-height:1.2}
+        .var-btn.no{cursor:default;background:transparent;border-style:dashed;border-color:#d9d4cb}
+        .var-btn.no:hover{border-color:#d9d4cb;background:transparent}
+        .var-btn.no em{font-style:normal;font-size:12px;font-weight:700;color:#9aa1ab;line-height:1.55}
+        .fila.var.sin-foto{align-items:center;min-height:0;padding:9px 10px 9px 13px}
+        .fila.var.sin-foto .fila-txt{flex-direction:row;align-items:center;gap:10px}
+        .fila.var.sin-foto .fila-nom{flex:1;min-width:0}
+        .fila.var.sin-foto .fila-vars{margin-top:0;flex-shrink:0}
+        .fila.var.sin-foto .var-btn{flex:0 0 94px}
+        .fila-nom{display:flex;flex-direction:column;gap:2px}
+        .cat-sp{margin-top:10px;background:rgba(255,255,255,.6);border:1.5px dashed #d9d4cb;border-radius:13px;padding:2px 13px}
+        .cat-sp-fila{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px 0;border-bottom:1px solid var(--border);font-size:13.5px;line-height:1.35}
+        .cat-sp-fila:last-child{border-bottom:none}
+        .cat-sp-fila strong{display:block;font-weight:700}
+        .cat-sp-fila small{display:block;font-size:11.8px;color:var(--muted);line-height:1.45;margin-top:1px}
+        .cat-sp-fila em{font-style:normal;font-size:12.5px;font-weight:700;color:#475569;text-align:right;flex-shrink:0;max-width:46%}
+        /* FICHA de un repuesto o servicio */
+        .modal-img.baja{height:clamp(170px,54vw,236px);background:#fff}
+        .pcard-eti{font-size:10.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--blue);line-height:1.4;margin-bottom:3px;padding-right:30px}
+        .pcard-det{font-size:13px;color:#4b5563;line-height:1.45;margin-top:4px}
+        .pcard-det+.mode-tabs,.pcard-name+.mode-tabs{margin-top:11px}
+        .pcard-det+.pcard-code{margin-top:4px}
+        .price-uni{font-size:13.5px;font-weight:600;color:var(--muted);letter-spacing:0;margin-left:7px}
+        .cat-pie{font-size:11.8px;color:var(--muted);line-height:1.5}
+        .admin-okbtn{background:var(--blue);color:#fff;border:none;font-size:12px;font-weight:700;padding:9px 14px;border-radius:8px;cursor:pointer;font-family:inherit;white-space:nowrap}
+        .admin-okbtn:disabled{opacity:.6;cursor:default}
       `));
   }
   var root = ReactDOM.createRoot(document.getElementById("root"));

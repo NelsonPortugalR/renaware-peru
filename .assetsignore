@@ -1,0 +1,11 @@
+# El sitio vive en la raíz del repo: aquí va lo que NO es parte del sitio
+# y no debe publicarse como archivo.
+.git
+.github
+.gitignore
+node_modules
+.wrangler
+wrangler.jsonc
+README.md
+sql
+pruebas
