@@ -427,8 +427,8 @@
     const g = GRUPOS_ESPECIALES.find((x) => x.test(n));
     return g ? g.key : "esp-otros";
   };
-  var ORDEN_LISTAS = ["tienda-online", "general", "compartir", "primavera", "especiales-distincion", "tu-agosto", "flash-patrio", "adicionales", "repuestos", "servicios"];
-  var ETIQUETA_CORTA = { "tienda-online": "Tienda en L\xEDnea", "general": "Lista General", "compartir": "Compartir", "primavera": "Primavera", "especiales-distincion": "Especiales", "tu-agosto": "Tu Agosto", "flash-patrio": "Flash Patrio", "adicionales": "Adicionales", "repuestos": "Repuestos", "servicios": "Servicios" };
+  var ORDEN_LISTAS = ["tienda-online", "general", "navidad-magica", "compartir", "primavera", "especiales-distincion", "tu-agosto", "flash-patrio", "adicionales", "repuestos", "servicios"];
+  var ETIQUETA_CORTA = { "tienda-online": "Tienda en L\xEDnea", "general": "Lista General", "navidad-magica": "Navidad M\xE1gica", "compartir": "Compartir", "primavera": "Primavera", "especiales-distincion": "Especiales", "tu-agosto": "Tu Agosto", "flash-patrio": "Flash Patrio", "adicionales": "Adicionales", "repuestos": "Repuestos", "servicios": "Servicios" };
   var TODAS_KEY = "__todas__";
   var SIGLAS = new Set(["I", "II", "III", "IV", "V", "VI", "L", "ML", "CM", "UV", "EM", "LX", "CTU", "UCU", "RWF", "IC", "LED", "USB", "TV"]);
   var PROPIOS = ["rena ware", "rena lite", "rena signature", "renawok", "aqua nano", "nutrex press", "nutrex", "aeroquattro", "zylstra", "max cooker", "king cooker", "queen cooker", "super deluxe cooker", "multi cooker", "contessa", "princesa", "saucier", "saucepan", "rondeau", "santoku", "chef", "gourmet", "jumbo", "\xE9lite", "elite"];
@@ -589,7 +589,7 @@
     aplicarReglas(Array.isArray(reglas) ? reglas[0] : reglas, factores);
     const posLista = (id) => {
       const i = ORDEN_LISTAS.indexOf(id);
-      return i < 0 ? ORDEN_LISTAS.length : i;
+      return i < 0 ? ORDEN_LISTAS.indexOf("general") + 0.5 : i;
     };
     const vigentes = (listas || []).map((l) => ({
       key: l.id,
@@ -598,7 +598,7 @@
       contado: l.permite_contado !== false,
       autocompra: l.permite_autocompra !== false,
       mezcla: l.se_mezcla !== false,
-      labelCorto: ETIQUETA_CORTA[l.id] || l.nombre,
+      labelCorto: ETIQUETA_CORTA[l.id] || String(l.nombre || "").replace(/^Especiales\s+(de\s+|para\s+)?/i, "") || l.nombre,
       soloTerceros: !!l.solo_terceros,
       sinPuntos: !!l.sin_puntos,
       actualizada: l.actualizada_en || null,
