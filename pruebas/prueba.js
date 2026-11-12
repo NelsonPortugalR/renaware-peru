@@ -260,6 +260,17 @@ async function servicios() {
   igual(await s.cuenta(".var-btn:not(.no)"), 39, "24 precios en Tradicional y 15 en Zylstra");
   igual(await s.cuenta(".var-btn.no"), 9, "y 9 piezas que no se hacen en Zylstra");
   igual(await s.cuenta(".cat-blo-img"), 2, "los dos juegos llevan su foto una sola vez");
+  /* Los dos precios caben en su tarjeta. Las filas sin foto (Juego Chef I y II) van en rejilla de ancho fijo:
+     Safari mide un contenedor flex por el contenido de sus hijos y no por su flex-basis, y los recuadros se
+     salían de la tarjeta y pisaban la de al lado (12/11/2026). */
+  const cajas = await p.evaluate(() => Array.from(document.querySelectorAll(".fila.var")).map((f) => {
+    const r = f.getBoundingClientRect(), v = f.querySelector(".fila-vars"), bs = Array.from(f.querySelectorAll(".var-btn")).map((b) => b.getBoundingClientRect());
+    return { sinFoto: f.classList.contains("sin-foto"), rejilla: getComputedStyle(v).display === "grid", sale: Math.max(...bs.map((b) => b.right)) - r.right,
+      hueco: v.getBoundingClientRect().width - (bs[bs.length - 1].right - bs[0].left) };
+  }));
+  igual(cajas.filter((c) => c.sinFoto).length, 7, "las 7 piezas de los juegos Chef van sin foto propia");
+  ok(cajas.every((c) => c.sale <= 0), "ningún precio se sale de su tarjeta");
+  ok(cajas.filter((c) => c.sinFoto).every((c) => c.rejilla && Math.abs(c.hueco) < 1), "sin foto: los dos precios van en rejilla de ancho fijo");
   const olla2 = p.locator(".fila.var", { hasText: "Olla 2 L" }).first();
   igual((await olla2.locator(".var-btn").allInnerTexts()).map((x) => x.replace(/\s+/g, " ")), ["TRADICIONAL S/ 140", "ZYLSTRA S/ 170"], "Olla 2 L: 140 y 170");
   const olla8 = p.locator(".fila.var", { hasText: "Olla 8 L" }).first();

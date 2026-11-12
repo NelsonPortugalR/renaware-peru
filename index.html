@@ -2686,10 +2686,11 @@
         .var-btn.no:hover{border-color:#d9d4cb;background:transparent}
         .var-btn.no em{font-style:normal;font-size:12px;font-weight:700;color:#9aa1ab;line-height:1.55}
         .fila.var.sin-foto{align-items:center;min-height:0;padding:9px 10px 9px 13px}
-        .fila.var.sin-foto .fila-txt{flex-direction:row;align-items:center;gap:10px}
-        .fila.var.sin-foto .fila-nom{flex:1;min-width:0}
-        .fila.var.sin-foto .fila-vars{margin-top:0;flex-shrink:0}
-        .fila.var.sin-foto .var-btn{flex:0 0 94px}
+        .fila.var.sin-foto .fila-txt{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:10px;row-gap:6px}
+        .fila.var.sin-foto .fila-nom{min-width:0}
+        .fila.var.sin-foto .fila-vars{margin-top:0;display:grid;grid-auto-flow:column;grid-auto-columns:94px;gap:6px}
+        .fila.var.sin-foto .var-btn{width:100%;min-width:0;box-sizing:border-box}
+        @media(max-width:359px){.fila.var.sin-foto .fila-txt{grid-template-columns:minmax(0,1fr)}.fila.var.sin-foto .fila-vars{grid-auto-columns:minmax(0,1fr)}}
         .fila-nom{display:flex;flex-direction:column;gap:2px}
         .cat-sp{margin-top:10px;background:rgba(255,255,255,.6);border:1.5px dashed #d9d4cb;border-radius:13px;padding:2px 13px}
         .cat-sp-fila{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px 0;border-bottom:1px solid var(--border);font-size:13.5px;line-height:1.35}
