@@ -2572,6 +2572,37 @@
         .sim-input{border-width:1px;border-radius:12px}
         .sim-input:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 4px rgba(37,99,235,.12)}
         .cmp-promo,.cmp-sugs,.cmp-vs{border-width:1px}
+        /* Menú de listas fijo bajo la cabecera: lo usan señoras de 50 años y tienen que verlo siempre (Nelson, 12/11/2026) */
+        .menu-fijo{position:sticky;top:58px;z-index:41;display:flow-root;background:var(--bg);margin:0 -12px;padding:6px 12px 0}
+        .menu-fijo .lista-switch{margin-bottom:6px}
+        .nav-medio{display:flow-root}
+        .sticky-nav{padding-top:1px}
+        .cat-section{scroll-margin-top:270px}
+        .nav-tab{font-size:13px;padding:8px 14px}
+        @media(max-width:699px){.header{position:relative}.menu-fijo{top:0}} /* en el celular la franja del título se va con la página: queda más pantalla para el menú, el buscador y la lista */
+        @media(max-width:520px){.lista-btn{min-height:40px}}
+        /* Repuestos y Servicios: foto y letra más grandes, sin exagerar (Nelson, 12/11/2026) */
+        .fila{gap:13px;min-height:92px;padding:11px 13px 11px 10px}
+        .fila-img{width:96px;height:74px}
+        .fila-eti{font-size:11.5px}
+        .fila-tit{font-size:16px}
+        .fila-det{font-size:14px}
+        .fila-cod{font-size:13px}
+        .fila-pre strong{font-size:18px}
+        .fila-pre small{font-size:11.5px}
+        .var-btn small{font-size:10.5px}
+        @media(min-width:360px){.fila.var.sin-foto .fila-vars{grid-auto-columns:100px}} /* con la letra más grande, «TRADICIONAL» ya no cabía en 94 px */
+        .var-btn strong{font-size:16.5px}
+        .var-btn.no em{font-size:13px}
+        .cat-sec-fam{font-size:12px}
+        .cat-sec-tit h2{font-size:19px}
+        .cat-sec-nota{font-size:14px}
+        .cat-sec-vars span{font-size:13px}
+        .cat-blo-head h3{font-size:12.5px}
+        .cat-blo-img{width:120px;height:68px}
+        .cat-sp-fila{font-size:14.5px}
+        .cat-sp-fila small{font-size:13px}
+        .cat-sp-fila em{font-size:13.5px}
       `;
   (function () {
     try {
@@ -2645,6 +2676,10 @@
     };
     const sectionRefs = useRef({});
     const navTopRef = useRef(null);
+    const menuRef = useRef(null);
+    const medioRef = useRef(null);
+    const [cabFija, setCabFija] = useState(58);      // alto de la cabecera cuando se queda fija (en el celular se va con la p\xE1gina: 0)
+    const [altoMenu, setAltoMenu] = useState(0);      // alto del men\xFA de listas, que queda fijo bajo la cabecera
     const [pasado, setPasado] = useState(false);     // la parte alta (listas y acciones) ya quedó fuera de la vista
     const searchInputRef = useRef(null);
     const clickScrolling = useRef(false);
@@ -2781,8 +2816,12 @@
     useEffect(() => {
       if (secciones.length && !secciones.some((s) => s.key === activeCat)) setActiveCat(TODAS_KEY);
     }, [secciones, activeCat]);
-    // Alto de la parte que no se queda pegada: bajando eso, el buscador y los filtros quedan justo bajo la cabecera
-    const altoNavTop = () => navTopRef.current ? navTopRef.current.offsetHeight : 0;
+    // Alto de lo que se va al bajar (la fecha, los botones de acci\xF3n y el aviso de la lista). Pasado eso quedan fijos
+    // bajo la cabecera el men\xFA de listas y, pegados a \xE9l, el buscador y los filtros.
+    const altoNavTop = () => {
+      const cab = cabFija ? 0 : ((document.querySelector(".header") || {}).offsetHeight || 0);   // si la cabecera no es fija, tambi\xE9n se va
+      return cab + (navTopRef.current ? navTopRef.current.offsetHeight : 0) + (medioRef.current ? medioRef.current.offsetHeight : 0);
+    };
     const irArriba = () => {
       try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch (e) { window.scrollTo(0, 0); }
     };
@@ -2792,12 +2831,32 @@
       if ((window.scrollY || 0) > y) window.scrollTo(0, y);
     };
     useEffect(() => {
-      const el = navTopRef.current;
-      if (!el || typeof IntersectionObserver === "undefined") return;
-      const obs = new IntersectionObserver(([e]) => setPasado(!e.isIntersecting), { rootMargin: "-60px 0px 0px 0px" });
-      obs.observe(el);
-      return () => obs.disconnect();
-    }, [verificando, sesion, adminOpen]);
+      // el men\xFA fijo mide distinto seg\xFAn cu\xE1ntas listas haya y el ancho: el buscador se pega justo debajo
+      const el = menuRef.current;
+      if (!el) return;
+      const medir = () => {
+        setAltoMenu(el.offsetHeight || 0);
+        const cab = document.querySelector(".header");
+        setCabFija(cab && /sticky/.test(getComputedStyle(cab).position) ? cab.offsetHeight : 0);
+      };
+      medir();
+      let ro = null;
+      if (typeof ResizeObserver !== "undefined") { ro = new ResizeObserver(medir); ro.observe(el); }
+      window.addEventListener("resize", medir);
+      return () => { if (ro) ro.disconnect(); window.removeEventListener("resize", medir); };
+    }, [verificando, sesion, adminOpen, listas.length]);
+    useEffect(() => {
+      const ver = () => setPasado((window.scrollY || 0) > altoNavTop() + 1);
+      ver();
+      window.addEventListener("scroll", ver, { passive: true });
+      window.addEventListener("resize", ver);
+      return () => { window.removeEventListener("scroll", ver); window.removeEventListener("resize", ver); };
+    }, [verificando, sesion, adminOpen, activeLista, isSearching, altoMenu, cabFija]);
+    useEffect(() => {
+      // al cambiar de lista desde el men\xFA fijo estando abajo, la lista nueva arranca justo debajo de lo fijo
+      const y = altoNavTop();
+      if ((window.scrollY || 0) > y) window.scrollTo(0, y);
+    }, [activeLista]);
     useEffect(() => {
       // al empezar a buscar, los resultados quedan arriba: en el celular el buscador sube bajo la cabecera
       if (!isSearching) return;
@@ -2835,13 +2894,13 @@
     const renderTile = (p) => h(ProductTile, { key: p.id, product: p, cartQty: cartQtyOf(p.id), onOpen: openProduct, imageOverrides: overrides });
     if (verificando) return h("div", { className: "login-espera" }, "Un momento\u2026");
     if (!sesion && !adminOpen) return h(Ingreso, { onEntrar: (d) => { sesionTok = d.token; setSesion(d); } });
-    return h("div", { className: "app" }, h("header", { className: "header" }, h("div", { className: "header-in" }, h("h1", { className: "header-t", onClick: irArriba }, "Precios y Promociones"), h("div", { className: "header-right" }, pasado && listaActual && h("button", { className: "header-lista", onClick: irArriba, title: "Volver arriba para cambiar de lista" }, h(ArribaSvg, null), h("span", null, listaActual.labelCorto || listaActual.label)), bonoActivoLista.activo && !(listaActual && listaActual.sinPuntos) && h("div", { className: "bonus-pill", title: (bonoInfo.semana ? `${bonoInfo.semana}% por ser primera semana del per\xEDodo` : "Puntaje adicional vigente") + (bonoActivoLista.extra ? ` + ${bonoActivoLista.extra}% de esta lista` : "") }, h(ClockSvg, null), h("span", null, "+", bonoActivoLista.porcentaje, "%")), sesion && h("div", { className: "cuenta" }, h("button", { className: "header-cuenta", onClick: () => setCuentaOpen(!cuentaOpen), "aria-label": "Tu sesi\xF3n", "aria-expanded": cuentaOpen ? "true" : "false" }, h(CuentaSvg, null)), cuentaOpen && h("div", { className: "cuenta-fondo", onClick: () => setCuentaOpen(false) }), cuentaOpen && h("div", { className: "cuenta-menu", role: "dialog", "aria-label": "Tu sesi\xF3n" }, h("div", { className: "cuenta-nom" }, sesion.nombre || "Tu sesi\xF3n"), h("p", { className: "cuenta-txt" }, "Este equipo te recuerda: no tienes que escribir tu DNI cada vez."), h("button", { className: "cuenta-salir", onClick: salir }, "Cerrar sesi\xF3n")))))), h("main", { className: "main" }, h("div", { className: "nav-top", ref: navTopRef }, listas.length > 1 && listaActual && listaActual.actualizada && h("div", { className: "lista-fecha" }, "Actualizada al ", new Date(listaActual.actualizada).toLocaleDateString("es-PE", { day: "2-digit", month: "short", year: "numeric", timeZone: "America/Lima" })), h("div", { className: "lista-switch", style: { "--nd": listas.length <= 6 ? listas.length : Math.ceil(listas.length / 2) } }, listas.map((l, i) => h("button", { key: l.key, className: `lista-btn ${l.especial ? "esp " : ""}${activeLista === l.key ? "on" : ""}`, style: { "--sp": repartoListas(listas.length)[i] }, onClick: () => {
+    return h("div", { className: "app" }, h("header", { className: "header" }, h("div", { className: "header-in" }, h("h1", { className: "header-t", onClick: irArriba }, "Precios y Promociones"), h("div", { className: "header-right" }, bonoActivoLista.activo && !(listaActual && listaActual.sinPuntos) && h("div", { className: "bonus-pill", title: (bonoInfo.semana ? `${bonoInfo.semana}% por ser primera semana del per\xEDodo` : "Puntaje adicional vigente") + (bonoActivoLista.extra ? ` + ${bonoActivoLista.extra}% de esta lista` : "") }, h(ClockSvg, null), h("span", null, "+", bonoActivoLista.porcentaje, "%")), sesion && h("div", { className: "cuenta" }, h("button", { className: "header-cuenta", onClick: () => setCuentaOpen(!cuentaOpen), "aria-label": "Tu sesi\xF3n", "aria-expanded": cuentaOpen ? "true" : "false" }, h(CuentaSvg, null)), cuentaOpen && h("div", { className: "cuenta-fondo", onClick: () => setCuentaOpen(false) }), cuentaOpen && h("div", { className: "cuenta-menu", role: "dialog", "aria-label": "Tu sesi\xF3n" }, h("div", { className: "cuenta-nom" }, sesion.nombre || "Tu sesi\xF3n"), h("p", { className: "cuenta-txt" }, "Este equipo te recuerda: no tienes que escribir tu DNI cada vez."), h("button", { className: "cuenta-salir", onClick: salir }, "Cerrar sesi\xF3n")))))), h("main", { className: "main" }, h("div", { className: "nav-top", ref: navTopRef }, listas.length > 1 && listaActual && listaActual.actualizada && h("div", { className: "lista-fecha" }, "Actualizada al ", new Date(listaActual.actualizada).toLocaleDateString("es-PE", { day: "2-digit", month: "short", year: "numeric", timeZone: "America/Lima" }))), h("div", { className: "menu-fijo", ref: menuRef }, h("div", { className: "lista-switch", style: { "--nd": listas.length <= 6 ? listas.length : Math.ceil(listas.length / 2) } }, listas.map((l, i) => h("button", { key: l.key, className: `lista-btn ${l.especial ? "esp " : ""}${activeLista === l.key ? "on" : ""}`, style: { "--sp": repartoListas(listas.length)[i] }, onClick: () => {
       setActiveLista(l.key);
       setActiveCat(TODAS_KEY);
       setSimOpen(false);
       setPromosOpen(false);
       closeSearch();
-    }, title: l.label }, h("span", { className: "lista-nom" }, l.labelCorto || l.label), l.especial && h("span", { className: "lista-esp" }, h("b", null, "Especial"), l.hasta ? " " : null, l.hasta ? h("i", null, "hasta ", diaMesCorto(l.hasta)) : null)))), completa && !isSearching && h("div", { className: "acciones-row" }, listaActual && !listaActual.sinPuntos && h("button", { className: "accion-btn", onClick: () => { rastrear("simulador", { lista: activeLista }); setSimOpen(true); } }, h(SparkSvg, null), " Simulador de puntos"), h("button", { className: "accion-btn", onClick: () => { rastrear("comparador", { lista: activeLista }); setPromosOpen(true); } }, h(SearchSvg, { s: 15 }), " Buscador maestro")), listaActual && listaActual.aviso && !isSearching && h("div", { className: "info-banner orange aviso-lista" }, h(InfoSvg, null), h("span", null, listaActual.aviso))), h("div", { className: `sticky-nav ${pasado ? "pegado" : ""}` }, h("div", { className: "nav-row" }, h("div", { className: "search-bar" }, h(SearchSvg, { s: 17 }), h("input", { type: "text", value: searchQuery, onChange: (e) => setSearchQuery(e.target.value), placeholder: vistaCat ? (activeLista === "servicios" ? "Buscar servicio…" : "Buscar repuesto: nombre o c\xF3digo…") : "Buscar producto: nombre, c\xF3digo o N\xB0..." }), searchQuery && h("button", { className: "search-clear", onClick: () => setSearchQuery(""), title: "Limpiar b\xFAsqueda" }, h(XSvg, { s: 14 }))), usaSecciones && !isSearching && h("div", { className: "nav-tabs" }, secciones.map((c) => h("button", { key: c.key, className: `nav-tab ${activeCat === c.key ? "active" : ""}`, onClick: () => scrollToCat(c.key) }, c.label))))), catalogoState === "loading" ? h("div", { className: "empty-state" }, h("p", null, "Cargando lista de precios\u2026")) : catalogoState === "error" ? h("div", { className: "empty-state" }, h("p", null, "No se pudo cargar la lista de precios."), h("span", { style: { fontSize: 13, color: "#9ca3af" } }, "Revisa tu conexi\xF3n y vuelve a intentar.")) : isSearching ? h(React.Fragment, null, h("div", { className: "results-info" }, searchResults.length, " resultado", searchResults.length !== 1 ? "s" : "", ' para "', searchQuery, '"'), searchResults.length > 0 ? (vistaCat ? h("div", { className: "filas" }, searchResults.map((p) => h(FilaCatalogo, { key: p.id, p, etiqueta: p.lista === activeLista ? p.catRaw + (p.sub ? " \xB7 " + p.sub : "") : "", externo: p.lista !== activeLista, listaNombre: etiquetaLista(p.lista), onOpen: openProduct, imageOverrides: overrides }))) : h("div", { className: "grid" }, searchResults.map(renderTile))) : h("div", { className: "empty-state" }, h("p", null, 'No se encontr\xF3 "', searchQuery, '"'), h("span", { style: { fontSize: 13, color: "#9ca3af" } }, "Prueba con otro nombre o el c\xF3digo del producto."))) : vistaCat ? (vistaCat.secciones.length === 0 ? h("div", { className: "empty-state" }, h("p", null, "Esta lista no tiene productos vigentes.")) : h("div", { className: "cat-wrap" }, vistaCat.secciones.filter((x) => activeCat === TODAS_KEY || x.chip === activeCat).map((x) => h(SeccionCatalogo, { key: x.key, s: x, conFamilia: activeCat === TODAS_KEY, etiquetaLista, onOpen: openProduct, imageOverrides: overrides })))) : !usaSecciones ? productosLista.length === 0 ? h("div", { className: "empty-state" }, h("p", null, "Esta lista no tiene productos vigentes.")) : h("div", { className: "grid" }, productosLista.map(renderTile)) : (() => {
+    }, title: l.label }, h("span", { className: "lista-nom" }, l.labelCorto || l.label), l.especial && h("span", { className: "lista-esp" }, h("b", null, "Especial"), l.hasta ? " " : null, l.hasta ? h("i", null, "hasta ", diaMesCorto(l.hasta)) : null))))), h("div", { className: "nav-medio", ref: medioRef }, completa && !isSearching && h("div", { className: "acciones-row" }, listaActual && !listaActual.sinPuntos && h("button", { className: "accion-btn", onClick: () => { rastrear("simulador", { lista: activeLista }); setSimOpen(true); } }, h(SparkSvg, null), " Simulador de puntos"), h("button", { className: "accion-btn", onClick: () => { rastrear("comparador", { lista: activeLista }); setPromosOpen(true); } }, h(SearchSvg, { s: 15 }), " Buscador maestro")), listaActual && listaActual.aviso && !isSearching && h("div", { className: "info-banner orange aviso-lista" }, h(InfoSvg, null), h("span", null, listaActual.aviso))), h("div", { className: `sticky-nav ${pasado ? "pegado" : ""}`, style: { top: cabFija + altoMenu } }, h("div", { className: "nav-row" }, h("div", { className: "search-bar" }, h(SearchSvg, { s: 17 }), h("input", { type: "text", value: searchQuery, onChange: (e) => setSearchQuery(e.target.value), placeholder: vistaCat ? (activeLista === "servicios" ? "Buscar servicio…" : "Buscar repuesto: nombre o c\xF3digo…") : "Buscar producto: nombre, c\xF3digo o N\xB0..." }), searchQuery && h("button", { className: "search-clear", onClick: () => setSearchQuery(""), title: "Limpiar b\xFAsqueda" }, h(XSvg, { s: 14 }))), usaSecciones && !isSearching && h("div", { className: "nav-tabs" }, secciones.map((c) => h("button", { key: c.key, className: `nav-tab ${activeCat === c.key ? "active" : ""}`, onClick: () => scrollToCat(c.key) }, c.label))))), catalogoState === "loading" ? h("div", { className: "empty-state" }, h("p", null, "Cargando lista de precios\u2026")) : catalogoState === "error" ? h("div", { className: "empty-state" }, h("p", null, "No se pudo cargar la lista de precios."), h("span", { style: { fontSize: 13, color: "#9ca3af" } }, "Revisa tu conexi\xF3n y vuelve a intentar.")) : isSearching ? h(React.Fragment, null, h("div", { className: "results-info" }, searchResults.length, " resultado", searchResults.length !== 1 ? "s" : "", ' para "', searchQuery, '"'), searchResults.length > 0 ? (vistaCat ? h("div", { className: "filas" }, searchResults.map((p) => h(FilaCatalogo, { key: p.id, p, etiqueta: p.lista === activeLista ? p.catRaw + (p.sub ? " \xB7 " + p.sub : "") : "", externo: p.lista !== activeLista, listaNombre: etiquetaLista(p.lista), onOpen: openProduct, imageOverrides: overrides }))) : h("div", { className: "grid" }, searchResults.map(renderTile))) : h("div", { className: "empty-state" }, h("p", null, 'No se encontr\xF3 "', searchQuery, '"'), h("span", { style: { fontSize: 13, color: "#9ca3af" } }, "Prueba con otro nombre o el c\xF3digo del producto."))) : vistaCat ? (vistaCat.secciones.length === 0 ? h("div", { className: "empty-state" }, h("p", null, "Esta lista no tiene productos vigentes.")) : h("div", { className: "cat-wrap" }, vistaCat.secciones.filter((x) => activeCat === TODAS_KEY || x.chip === activeCat).map((x) => h(SeccionCatalogo, { key: x.key, s: x, conFamilia: activeCat === TODAS_KEY, etiquetaLista, onOpen: openProduct, imageOverrides: overrides })))) : !usaSecciones ? productosLista.length === 0 ? h("div", { className: "empty-state" }, h("p", null, "Esta lista no tiene productos vigentes.")) : h("div", { className: "grid" }, productosLista.map(renderTile)) : (() => {
       const sec = secciones.find((s) => s.key === activeCat) || secciones[0];
       return h(React.Fragment, null, h("div", { className: "cat-header" }, h("span", { className: "cat-dot", style: { background: sec.color } }), h("h2", null, sec.label), h("span", { className: "cat-count" }, sec.products.length)), h("div", { className: "grid" }, sec.products.map(renderTile)));
     })()), promosOpen && h(ComparadorPromos, { listas, productos: catalogo.productos, piezas: catalogo.piezas, onClose: () => setPromosOpen(false), onIr: (p) => {
