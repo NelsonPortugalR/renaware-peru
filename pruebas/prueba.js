@@ -438,6 +438,15 @@ async function vistaAsesor() {
   ok(await b.cuenta(".accion-btn") === 0, "sin los botones de la vista completa");
   const c4 = await b.cajas(".lista-btn");
   ok(c4[0].y === c4[1].y && c4[2].y === c4[3].y && c4[2].y > c4[0].y && c4[0].h === c4[1].h, "cuatro listas: dos y dos, parejas en cada fila");
+  await b.pagina.locator(".header-cuenta").click(); await b.pagina.waitForTimeout(200);
+  ok(/Nelson/.test(await b.texto(".cuenta-menu")) && await b.cuenta(".cuenta-salir") === 1, "el botón de la sesión dice quién entró y deja cerrarla");
+  const cm = (await b.cajas(".cuenta-menu"))[0];
+  ok(cm.x >= 0 && cm.der <= 390, "el menú de la sesión cabe en el celular → " + JSON.stringify(cm));
+  await b.pagina.locator(".cuenta-salir").click(); await b.pagina.waitForTimeout(300);
+  ok(await b.cuenta(".login-box") === 1 && await b.cuenta(".lista-btn") === 0, "al cerrar sesión vuelve a pedir el DNI");
+  ok(!(await b.pagina.evaluate(() => localStorage.getItem("rw_sesion_v1"))), "y este equipo ya no recuerda la sesión");
+  await b.pagina.locator(".login-input").fill("45678912"); await b.pagina.locator(".login-btn").click(); await b.pagina.waitForSelector(".lista-btn");
+  ok(await b.cuenta(".lista-btn") === 4, "y se puede volver a entrar");
   await b.fin("asesor con sesión guardada");
 }
 

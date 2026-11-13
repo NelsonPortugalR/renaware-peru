@@ -24,6 +24,9 @@
      es público).
 
    Solo agrega. Se puede volver a correr.
+   OJO: el mismo día se quitó la exigencia del celular; acceso_dni,
+   asesor_login, asesor_sesion_valida y admin_asesores quedaron como en
+   20261112_07_basta_el_dni.sql.
    ===================================================================== */
 
 alter table public.asesores add column if not exists dni text;
