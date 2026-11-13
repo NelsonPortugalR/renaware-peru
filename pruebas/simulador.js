@@ -33,7 +33,7 @@ window.supabase = { createClient: function () {
     rpc: function (n, a) {
       a = a || {}; S.rpc.push([n, a]);
       if (n === "asesor_sesion_valida") return R(S.sesiones[a.p_token] ? Object.assign({ ok: true }, S.sesiones[a.p_token]) : { ok: false });
-      if (n === "asesor_login") { var quien = { "987654321": { nombre: "Nelson", celular: "987654321", completa: true }, "912345678": { nombre: "Rosa", celular: "912345678", completa: false } }[String(a.p_celular)]; if (!quien) return E("Ese celular no esta habilitado"); S.sesiones["tok-asesor"] = quien; return R(Object.assign({ token: "tok-asesor" }, quien)); }
+      if (n === "asesor_login") { var quien = { "40123456": { nombre: "Nelson", celular: "987654321", completa: true }, "45678912": { nombre: "Rosa", celular: "912345678", completa: false } }[String(a.p_celular)]; if (!quien) return E("Ese DNI no esta habilitado"); S.sesiones["tok-asesor"] = quien; return R(Object.assign({ token: "tok-asesor" }, quien)); }
       if (n === "registrar_evento") return R(true);
       if (n === "admin_login") { if (a.p_clave !== "${CLAVE_ADMIN}") return E("Clave incorrecta"); S.admin["tok-admin"] = 1; return R("tok-admin"); }
       if (n === "guardar_config_tok") { if (!esAdmin(a.p_token)) return E("Sesion invalida"); S.config = a.p_data || S.config; return R(true); }

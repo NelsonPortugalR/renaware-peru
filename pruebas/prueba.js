@@ -56,12 +56,16 @@ async function ingreso() {
   titulo("Ingreso y listas");
   const s = await sesion({ movil: true, sinSesion: true, cambiar: sinBono });
   const p = s.pagina;
-  ok(await s.cuenta(".login-box") === 1, "sin sesión pide el celular");
+  ok(await s.cuenta(".login-box") === 1 && await s.texto(".login-rot") === "Tu DNI", "sin sesión pide el DNI");
   ok(await s.cuenta(".lista-btn") === 0, "y no muestra ninguna lista");
-  await p.locator(".login-input").fill("911111111");
+  await p.locator(".login-input").fill("123");
+  await p.locator(".login-btn").click(); await p.waitForTimeout(200);
+  ok(/8 dígitos/.test(await s.texto(".login-err")) && (await s.rpc("asesor_login")).length === 0, "un DNI incompleto se avisa sin consultar la base");
+  await p.locator(".login-input").fill("11111111");
   await p.locator(".login-btn").click(); await p.waitForTimeout(300);
-  ok(/no está habilitado/.test(await s.texto(".login-err")), "un celular que no está en la lista no entra");
-  await p.locator(".login-input").fill("987654321");
+  ok(/no está registrado/.test(await s.texto(".login-err")), "un DNI que no está en el equipo no entra");
+  await p.locator(".login-input").fill("40 123 456-x9");
+  igual(await p.locator(".login-input").inputValue(), "40123456", "el campo se queda solo con los 8 dígitos");
   await p.locator(".login-btn").click();
   await p.waitForSelector(".lista-btn");
   await p.waitForTimeout(300);
@@ -417,7 +421,7 @@ async function vistaAsesor() {
   ok(await s.cuenta(".login-lado h2") === 1 && await s.cuenta(".login-rot") === 1, "la pantalla de ingreso trae su título y el rótulo del campo");
   const caja = (await s.cajas(".login-box"))[0], boton = (await s.cajas(".login-btn"))[0];
   ok(boton.aba <= 844 && caja.x === 0 && caja.der === 390, "en el celular el botón Entrar queda a la vista sin bajar → " + JSON.stringify(boton));
-  await p.locator(".login-input").fill("912345678");
+  await p.locator(".login-input").fill("45678912");
   await p.locator(".login-btn").click();
   await p.waitForSelector(".lista-btn");
   await p.waitForTimeout(300);
@@ -428,7 +432,7 @@ async function vistaAsesor() {
   ok(/esp on/.test(await p.locator(".lista-btn", { hasText: "Compartir" }).getAttribute("class")) && await s.cuenta(".tile") > 0, "abre el especial y muestra sus fichas");
   await s.lista("Repuestos");
   ok(await s.cuenta(".accion-btn") === 0 && await s.cuenta(".fila") > 0, "Repuestos se ve igual, sin los botones de la vista completa");
-  await s.fin("asesor que entra con su celular");
+  await s.fin("asesor que entra con su DNI");
   const b = await sesion({ movil: true, cambiar: (m) => { sinBono(m); m.completa = false; } });
   igual(await b.textos(".lista-btn .lista-nom"), ["Lista General", "Compartir", "Repuestos", "Servicios"], "y ve lo mismo al volver con la sesión guardada");
   ok(await b.cuenta(".accion-btn") === 0, "sin los botones de la vista completa");

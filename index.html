@@ -1384,6 +1384,7 @@
     const [msg, setMsg] = useState("");
     const [cel, setCel] = useState("");
     const [nom, setNom] = useState("");
+    const [dni, setDni] = useState("");
     const [clave1, setClave1] = useState("");
     const cargar = async (b, s) => {
       try {
@@ -1414,10 +1415,12 @@
         setMsg(/[a-z]/i.test(c) ? "En Celular hay letras. El n\xFAmero va en el segundo campo." : "El celular necesita 9 d\xEDgitos.");
         return;
       }
+      const dg = (dni || "").replace(/\D/g, "");
+      if (dg.length < 7 || dg.length > 8) { setMsg("El DNI necesita 8 d\xEDgitos."); return; }
       try {
-        const { error } = await sb.rpc("admin_guardar_asesor", { p_token: adminTok(), p_celular: c, p_nombre: nb, p_activo: true });
+        const { error } = await sb.rpc("admin_invitar", { p_token: adminTok(), p_celular: c, p_nombre: nb, p_dni: dg });
         if (error) throw error;
-        setCel(""); setNom(""); setMsg("Listo: " + (nb || c) + " ya puede entrar."); await cargar();
+        setCel(""); setNom(""); setDni(""); setMsg("Listo: " + (nb || c) + " ya puede entrar con su DNI."); await cargar();
       } catch (e) { setMsg(e.message || "No se pudo agregar"); }
     };
     const cambiarClave = async () => {
@@ -1430,27 +1433,30 @@
     };
     const filas = (d && d.filas) || [];
     return h("div", { className: "admin-body" },
-      h("p", { className: "admin-note" }, "Los asesores salen de tu base del equipo. No hay que cargarlos aqu\xED: si el celular est\xE1 ah\xED y la persona est\xE1 activa, entra sola."),
+      h("p", { className: "admin-note" }, "Los asesores salen de tu base del equipo y entran con su DNI. No hay que cargarlos aqu\xED: entra sola la persona activa que tiene ah\xED su DNI y su celular. A quien le falta el DNI hay que registr\xE1rselo en la base del equipo."),
       msg && h("div", { className: "info-banner blue", style: { marginBottom: 10 } }, h(InfoSvg, null), h("span", null, msg)),
       d && h("div", { className: "asr-tot" },
         h("span", null, h("strong", null, d.total_equipo), " del equipo"),
         h("span", null, h("strong", null, d.invitados), " invitados"),
-        h("span", { className: d.bloqueados ? "rojo" : "" }, h("strong", null, d.bloqueados), " bloqueados")),
+        h("span", { className: d.bloqueados ? "rojo" : "" }, h("strong", null, d.bloqueados), " bloqueados"),
+        h("span", { className: d.sin_dni ? "rojo" : "" }, h("strong", null, d.sin_dni || 0), " sin DNI")),
       h("input", { className: "asr-busca", type: "text", value: busca, onChange: (e) => setBusca(e.target.value), placeholder: "Buscar por nombre o celular" }),
       h("div", { className: "ev-tools" },
         h("button", { className: `sim-chip ${solo === "activos" ? "on" : ""}`, onClick: () => setSolo("activos") }, "Todos"),
-        h("button", { className: `sim-chip ${solo === "usaron" ? "on" : ""}`, onClick: () => setSolo("usaron") }, "Solo los que entraron")),
+        h("button", { className: `sim-chip ${solo === "usaron" ? "on" : ""}`, onClick: () => setSolo("usaron") }, "Solo los que entraron"),
+        h("button", { className: `sim-chip ${solo === "sin_dni" ? "on" : ""}`, onClick: () => setSolo("sin_dni") }, "Les falta el DNI")),
       filas.map((a) => h("div", { key: a.celular, className: `asr-fila ${a.bloqueado ? "off" : ""}` },
         h("div", { className: "asr-datos" },
-          h("span", { className: "asr-nom" }, a.nombre || "(sin nombre)", a.origen === "invitado" && h("span", { className: "asr-tag" }, "invitado")),
+          h("span", { className: "asr-nom" }, a.nombre || "(sin nombre)", a.origen === "invitado" && h("span", { className: "asr-tag" }, "invitado"), a.con_dni === false && h("span", { className: "asr-tag falta" }, "falta DNI")),
           h("span", { className: "asr-cel" }, a.celular, " \xB7 ", a.ultima_vez ? "\xFAltima vez " + fechaCorta(a.ultima_vez) : "nunca entr\xF3")),
-        h("button", { className: `asr-sw ${a.bloqueado ? "" : "on"}`, onClick: () => bloquear(a.celular, !a.bloqueado, a.nombre) }, a.bloqueado ? "Bloqueado" : "Entra"))),
+        h("button", { className: `asr-sw ${a.bloqueado || a.con_dni === false ? "" : "on"}`, onClick: () => bloquear(a.celular, !a.bloqueado, a.nombre) }, a.bloqueado ? "Bloqueado" : a.con_dni === false ? "Sin DNI" : "Entra"))),
       d && !filas.length && h("div", { className: "sim-empty" }, busca ? "Nadie coincide con esa b\xFAsqueda." : "Sin resultados."),
       filas.length >= 120 && h("p", { className: "sim-foot" }, "Se muestran los primeros 120. Usa el buscador para encontrar a alguien puntual."),
       h("div", { className: "sim-sect" }, "Invitar a alguien que no est\xE1 en el equipo"),
       h("div", { className: "asr-alta con-rotulo" },
         h("label", null, "Nombre", h("input", { type: "text", value: nom, onChange: (e) => { setNom(e.target.value); setMsg(""); }, placeholder: "Ej. Lili" })),
-        h("label", null, "Celular", h("input", { type: "tel", inputMode: "numeric", value: cel, onChange: (e) => { setCel(e.target.value); setMsg(""); }, placeholder: "921305609" })),
+        h("label", null, "Celular", h("input", { type: "tel", inputMode: "numeric", value: cel, onChange: (e) => { setCel(e.target.value); setMsg(""); }, placeholder: "987654321" })),
+        h("label", null, "DNI", h("input", { type: "text", inputMode: "numeric", value: dni, onChange: (e) => { setDni(e.target.value.replace(/\D/g, "").slice(0, 8)); setMsg(""); }, placeholder: "8 d\xEDgitos" })),
         h("button", { className: "asr-add", onClick: invitar }, "Invitar")),
       h("div", { className: "sim-sect" }, "Clave de administrador"),
       h("div", { className: "asr-alta" },
@@ -1854,15 +1860,16 @@
     const [busy, setBusy] = useState(false);
     const entrar = async () => {
       const limpio = (cel || "").replace(/\D/g, "");
-      if (limpio.length < 9) { setErr("Escribe tu n\xFAmero completo"); return; }
+      if (limpio.length < 7 || limpio.length > 8) { setErr("Tu DNI tiene 8 d\xEDgitos"); return; }
       setBusy(true); setErr("");
       try {
+        // En la base el par\xE1metro conserva su nombre, pero lo que esta pantalla env\xEDa es el DNI
         const { data, error } = await sb.rpc("asesor_login", { p_celular: limpio, p_ctx: contexto() });
         if (error) throw error;
         guardarTok(SESION_KEY, data.token);
         onEntrar(data);
       } catch (e) {
-        setErr(/habilitado/i.test(e.message || "") ? "Ese n\xFAmero no est\xE1 habilitado. Pide acceso a tu l\xEDder." : (e.message || "No se pudo ingresar"));
+        setErr(/habilitado/i.test(e.message || "") ? "Ese DNI no est\xE1 registrado en el equipo. Pide a tu l\xEDder que lo registre." : (e.message || "No se pudo ingresar"));
       }
       setBusy(false);
     };
@@ -1875,12 +1882,11 @@
           h("p", { className: "login-sub" }, "La herramienta del Equipo Arequipa: las listas vigentes con el precio al cliente, las cuotas, los puntos y lo que ganas en cada venta."))),
       h("div", { className: "login-box" },
         h("div", { className: "login-box-in" },
-          h("label", { className: "login-rot", htmlFor: "login-cel" }, "Tu celular"),
+          h("label", { className: "login-rot", htmlFor: "login-dni" }, "Tu DNI"),
           h("div", { className: "login-campo" },
-            h("span", { className: "login-pref" }, "+51"),
-            h("input", { id: "login-cel", className: "login-input", type: "tel", inputMode: "numeric", autoComplete: "tel-national", value: cel, autoFocus: true, maxLength: 12,
-              onChange: (e) => { setCel(e.target.value); setErr(""); }, onKeyDown: (e) => e.key === "Enter" && entrar(), placeholder: "987 654 321" })),
-          h("p", { className: "login-ayuda" }, "El que tienes registrado en el equipo."),
+            h("input", { id: "login-dni", className: "login-input", type: "text", inputMode: "numeric", pattern: "[0-9]*", autoComplete: "off", value: cel, autoFocus: true,
+              onChange: (e) => { setCel(e.target.value.replace(/\D/g, "").slice(0, 8)); setErr(""); }, onKeyDown: (e) => e.key === "Enter" && entrar(), placeholder: "8 d\xEDgitos" })),
+          h("p", { className: "login-ayuda" }, "El mismo con el que est\xE1s registrado en el equipo."),
           err && h("div", { className: "login-err", role: "alert" }, h(AlertSvg, null), h("span", null, err)),
           h("button", { className: "login-btn", onClick: entrar, disabled: busy }, busy ? "Entrando\u2026" : "Entrar"),
           h("p", { className: "login-pie" }, "Lo escribes una sola vez. Despu\xE9s entras directo."))));
@@ -2106,8 +2112,8 @@
         .login-campo{display:flex;align-items:stretch;border:1.5px solid #cfd6de;border-radius:14px;overflow:hidden;background:#fff;transition:border-color .15s,box-shadow .15s}
         .login-campo:focus-within{border-color:var(--blue);box-shadow:0 0 0 4px rgba(37,99,235,.14)}
         .login-pref{display:flex;align-items:center;padding:0 14px;background:#f3f5f8;border-right:1.5px solid #cfd6de;font-size:15px;font-weight:700;color:#56616d}
-        .login-input{flex:1;min-width:0;border:none;outline:none;padding:16px 14px;font-size:21px;font-weight:700;font-family:inherit;letter-spacing:.04em;background:transparent;color:var(--text)}
-        .login-input::placeholder{color:#b6bec8;font-weight:500}
+        .login-input{flex:1;min-width:0;border:none;outline:none;padding:16px 14px;font-size:21px;font-weight:700;font-family:inherit;letter-spacing:.1em;background:transparent;color:var(--text)}
+        .login-input::placeholder{color:#b6bec8;font-weight:500;letter-spacing:.02em}
         .login-ayuda{margin:8px 2px 0;font-size:12.5px;line-height:1.45;color:var(--muted)}
         .login-err{display:flex;align-items:flex-start;gap:7px;margin-top:12px;padding:10px 11px;background:#fef2f2;border-radius:10px;font-size:12.5px;font-weight:700;color:var(--red);line-height:1.45;text-align:left}
         .login-btn{width:100%;margin-top:16px;padding:16px;border:none;border-radius:14px;background:var(--blue);color:#fff;font-size:16px;font-weight:800;font-family:inherit;cursor:pointer;box-shadow:0 8px 20px rgba(37,99,235,.28);transition:background .15s,transform .1s}
@@ -2124,6 +2130,7 @@
         .asr-tot .rojo{color:var(--red)}
         .asr-busca{width:100%;border:1.5px solid var(--border);border-radius:10px;padding:11px;font-size:14px;font-family:inherit;background:#fff;margin-bottom:8px}
         .asr-tag{margin-left:6px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--indigoD);background:var(--indigoL);border-radius:5px;padding:1px 5px}
+        .asr-tag.falta{color:var(--red);background:var(--redL)}
         .admin-msgrow{margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)}
         .admin-msgrow label{display:flex;flex-direction:column;gap:3px;font-size:11.5px;font-weight:700;color:var(--muted)}
         .admin-msgrow textarea{border:1.5px solid var(--border);border-radius:8px;padding:8px;font-size:13px;font-family:inherit;resize:vertical}

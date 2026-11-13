@@ -45,7 +45,7 @@ validan la sesión.
   «Pulido»: una fila por pieza con un precio por variante.
 - **Fotos, videos, puntaje extra, premios, mensajes**: fila `rena-ware` de
   `site_config`, que se edita desde el panel de administración.
-- **Asesores**: la base del equipo; sin celular registrado no se entra.
+- **Asesores**: la base del equipo. Se entra con el DNI (desde el 12/11/2026): la persona tiene que estar activa en la base del equipo con su DNI y su celular. La pestaña dice a quién le falta el DNI y permite invitar, con DNI, a alguien que no está en el equipo.
 
 Las fotos tienen dos caminos y gana el primero que exista:
 
