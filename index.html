@@ -428,6 +428,13 @@
     return g ? g.key : "esp-otros";
   };
   var ORDEN_LISTAS = ["tienda-online", "general", "navidad-magica", "compartir", "primavera", "especiales-distincion", "tu-agosto", "flash-patrio", "adicionales", "repuestos", "servicios"];
+  var LISTAS_FIJAS = ["tienda-online", "general", "adicionales", "repuestos", "servicios"];
+  var LISTAS_VISTA_COMPLETA = ["tienda-online"];
+  var MESES_CORTOS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "set", "oct", "nov", "dic"];
+  var diaMesCorto = (f) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(f || ""));
+    return m ? Number(m[3]) + " " + MESES_CORTOS[Number(m[2]) - 1] : "";
+  };
   var ETIQUETA_CORTA = { "tienda-online": "Tienda en L\xEDnea", "general": "Lista General", "navidad-magica": "Navidad M\xE1gica", "compartir": "Compartir", "primavera": "Primavera", "especiales-distincion": "Especiales", "tu-agosto": "Tu Agosto", "flash-patrio": "Flash Patrio", "adicionales": "Adicionales", "repuestos": "Repuestos", "servicios": "Servicios" };
   var TODAS_KEY = "__todas__";
   var SIGLAS = new Set(["I", "II", "III", "IV", "V", "VI", "L", "ML", "CM", "UV", "EM", "LX", "CTU", "UCU", "RWF", "IC", "LED", "USB", "TV"]);
@@ -601,6 +608,8 @@
       labelCorto: ETIQUETA_CORTA[l.id] || String(l.nombre || "").replace(/^Especiales\s+(de\s+|para\s+)?/i, "") || l.nombre,
       soloTerceros: !!l.solo_terceros,
       sinPuntos: !!l.sin_puntos,
+      especial: LISTAS_FIJAS.indexOf(l.id) < 0,
+      hasta: l.vigente_hasta || null,
       actualizada: l.actualizada_en || null,
       factorCliente: l.factor_cliente != null ? Number(l.factor_cliente) : null,
       aviso: l.aviso || "",
@@ -1858,286 +1867,26 @@
       setBusy(false);
     };
     return h("div", { className: "login-wrap" },
-      h("div", { className: "login-deco" }),
-      h("div", { className: "login-box" },
+      h("div", { className: "login-lado" },
+        h("div", { className: "login-tapa", "aria-hidden": "true" }),
         h("div", { className: "login-marca" }, h("span", { className: "login-rw" }, "RENA WARE"), h("span", { className: "login-anos" }, "60 a\xF1os en Per\xFA")),
-        h("h2", null, "Precios y Promociones"),
-        h("p", { className: "login-sub" }, "Herramienta del Equipo Arequipa. Ingresa con el celular que tienes registrado."),
-        h("div", { className: "login-campo" },
-          h("span", { className: "login-pref" }, "+51"),
-          h("input", { className: "login-input", type: "tel", inputMode: "numeric", value: cel, autoFocus: true, maxLength: 12,
-            onChange: (e) => { setCel(e.target.value); setErr(""); }, onKeyDown: (e) => e.key === "Enter" && entrar(), placeholder: "987 654 321" })),
-        err && h("div", { className: "login-err" }, h(AlertSvg, null), h("span", null, err)),
-        h("button", { className: "login-btn", onClick: entrar, disabled: busy }, busy ? "Entrando\u2026" : "Entrar"),
-        h("p", { className: "login-pie" }, "Una sola vez. Despu\xE9s entras directo.")));
+        h("div", { className: "login-titular" },
+          h("h2", null, "Precios y Promociones"),
+          h("p", { className: "login-sub" }, "La herramienta del Equipo Arequipa: las listas vigentes con el precio al cliente, las cuotas, los puntos y lo que ganas en cada venta."))),
+      h("div", { className: "login-box" },
+        h("div", { className: "login-box-in" },
+          h("label", { className: "login-rot", htmlFor: "login-cel" }, "Tu celular"),
+          h("div", { className: "login-campo" },
+            h("span", { className: "login-pref" }, "+51"),
+            h("input", { id: "login-cel", className: "login-input", type: "tel", inputMode: "numeric", autoComplete: "tel-national", value: cel, autoFocus: true, maxLength: 12,
+              onChange: (e) => { setCel(e.target.value); setErr(""); }, onKeyDown: (e) => e.key === "Enter" && entrar(), placeholder: "987 654 321" })),
+          h("p", { className: "login-ayuda" }, "El que tienes registrado en el equipo."),
+          err && h("div", { className: "login-err", role: "alert" }, h(AlertSvg, null), h("span", null, err)),
+          h("button", { className: "login-btn", onClick: entrar, disabled: busy }, busy ? "Entrando\u2026" : "Entrar"),
+          h("p", { className: "login-pie" }, "Lo escribes una sola vez. Despu\xE9s entras directo."))));
   };
-  function App() {
-    const [catalogo, setCatalogo] = useState({ listas: [], productos: [], piezas: [], grupos: [], sinPrecio: [] });
-    const [catalogoState, setCatalogoState] = useState("loading");
-    const [activeLista, setActiveLista] = useState("general");
-    const [activeCat, setActiveCat] = useState(TODAS_KEY);
-    const [searchQuery, setSearchQuery] = useState("");
-    const [bonoInfo, setBonoInfo] = useState({ activo: false, porcentaje: 0 });
-    const [cart, setCart] = useState([]);
-    const [cartOpen, setCartOpen] = useState(false);
-    const [adminOpen, setAdminOpen] = useState(() => {
-      try {
-        const p = (location.pathname || "").replace(/\/+$/, "").toLowerCase();
-        return p.endsWith("/admin") || location.hash.toLowerCase().replace(/\//g, "") === "#admin" || /(?:^|[?&])admin(?:=|&|$)/i.test(location.search);
-      } catch (e) {
-        return false;
-      }
-    });
-    const [adminConfig, setAdminConfig] = useState(DEFAULT_CONFIG);
-    const [configLoaded, setConfigLoaded] = useState(false);
-    const [saveState, setSaveState] = useState("idle");
-    const [sesion, setSesion] = useState(null);
-    const [verificando, setVerificando] = useState(true);
-    const [selectedId, setSelectedId] = useState(null);
-    useEffect(() => {
-      let vivo = true;
-      (async () => {
-        const tk = leerTok(SESION_KEY);
-        if (!tk || !sb) { if (vivo) setVerificando(false); return; }
-        try {
-          const { data, error } = await sb.rpc("asesor_sesion_valida", { p_token: tk });
-          if (error) throw error;
-          if (data && data.ok) { sesionTok = tk; if (vivo) setSesion({ token: tk, nombre: data.nombre, celular: data.celular }); }
-          else guardarTok(SESION_KEY, "");
-        } catch (e) { guardarTok(SESION_KEY, ""); }
-        if (vivo) setVerificando(false);
-      })();
-      return () => { vivo = false; };
-    }, []);
-    useEffect(() => {
-      if (!sesion) return;
-      const t = setInterval(() => { if (!document.hidden) rastrear("latido", {}); }, 60000);
-      return () => clearInterval(t);
-    }, [sesion]);
-    const [simOpen, setSimOpen] = useState(false);
-    const [promosOpen, setPromosOpen] = useState(false);
-    const sectionRefs = useRef({});
-    const navTopRef = useRef(null);
-    const [pasado, setPasado] = useState(false);     // la parte alta (listas y acciones) ya quedó fuera de la vista
-    const searchInputRef = useRef(null);
-    const clickScrolling = useRef(false);
-    const adminTouched = useRef(false);
-    const saveTimer = useRef(null);
-    useEffect(() => {
-      let alive = true;
-      try {
-        const cached = loadConfigLocal();
-        if (cached && (Object.keys(cached.imagenes || {}).length || Object.keys(cached.videos || {}).length || (cached.bonosExtra || []).length)) {
-          setAdminConfig(cached);
-          setConfigLoaded(true);
-        }
-      } catch (e) {
-      }
-      (async () => {
-        const cfg = await fetchConfig();
-        if (!alive) return;
-        setAdminConfig(cfg);
-        setConfigLoaded(true);
-        try {
-          saveConfigLocal(cfg);
-        } catch (e) {
-        }
-      })();
-      return () => {
-        alive = false;
-      };
-    }, []);
-    useEffect(() => {
-      let alive = true;
-      try {
-        const raw = localStorage.getItem(CATALOG_CACHE_KEY);
-        if (raw) {
-          const c = JSON.parse(raw);
-          if (c && c.productos && c.productos.length) {
-            aplicarReglas(c.reglas, c.factores);
-            setCatalogo({ listas: c.listas || [], productos: c.productos, piezas: c.piezas || [], grupos: c.grupos || [], sinPrecio: c.sinPrecio || [] });
-            setCatalogoState("ok");
-          }
-        }
-      } catch (e) {
-      }
-      (async () => {
-        try {
-          const cat = await fetchCatalogo();
-          if (!alive) return;
-          setCatalogo(cat);
-          setCatalogoState("ok");
-          try {
-            localStorage.setItem(CATALOG_CACHE_KEY, JSON.stringify({ ...cat, reglas: { pct_inicial_minima: CONFIG.inicialMinPercent, saldo_minimo: CONFIG.capitalMinimoFinanciar, cuota_minima: CONFIG.cuotaMinimaPermitida, gasto_mensual: CONFIG.gastoAdminMensual, contado_minimo_100: CONFIG.precioSoloContado }, factores: CONFIG.plazos.map((m) => ({ meses: m, factor: FACTORES[m] })) }));
-          } catch (e) {
-          }
-        } catch (e) {
-          if (!alive) return;
-          setCatalogoState((prev) => prev === "ok" ? "ok" : "error");
-        }
-      })();
-      return () => {
-        alive = false;
-      };
-    }, []);
-    useEffect(() => {
-      if (!configLoaded || !adminTouched.current) return;
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-      setSaveState("saving");
-      saveTimer.current = setTimeout(async () => {
-        const res = await saveConfigRemote(adminConfig);
-        setSaveState(res.ok ? "saved" : "error");
-      }, 700);
-      return () => {
-        if (saveTimer.current) clearTimeout(saveTimer.current);
-      };
-    }, [adminConfig, configLoaded]);
-    const saveNow = useCallback(async () => {
-      setSaveState("saving");
-      const res = await saveConfigRemote(adminConfig);
-      setSaveState(res.ok ? "saved" : "error");
-    }, [adminConfig]);
-    useEffect(() => {
-      setBonoInfo(evaluarBonos(adminConfig.bonosExtra, adminConfig.bonoSemana));
-    }, [adminConfig.bonosExtra, adminConfig.bonoSemana]);
-    useEffect(() => {
-      const lock = cartOpen || adminOpen || selectedId || simOpen || promosOpen;
-      document.body.style.overflow = lock ? "hidden" : "";
-      return () => {
-        document.body.style.overflow = "";
-      };
-    }, [cartOpen, adminOpen, selectedId, simOpen, promosOpen]);
-    const addToCart = useCallback((id) => setCart((prev) => {
-      const f = prev.find((i) => i.id === id);
-      return f ? prev.map((i) => i.id === id ? { ...i, qty: i.qty + 1 } : i) : [...prev, { id, qty: 1 }];
-    }), []);
-    const subFromCart = useCallback((id) => setCart((prev) => prev.flatMap((i) => i.id === id ? i.qty - 1 <= 0 ? [] : [{ ...i, qty: i.qty - 1 }] : [i])), []);
-    const removeFromCart = useCallback((id) => setCart((prev) => prev.filter((i) => i.id !== id)), []);
-    const clearCart = useCallback(() => setCart([]), []);
-    const openProductRaw = useCallback((id) => setSelectedId(id), []);
-    const cartCount = cart.reduce((s, i) => s + i.qty, 0);
-    const listas = catalogo.listas;
-    const productIndex = useMemo(() => Object.fromEntries(catalogo.productos.map((p) => [p.id, p])), [catalogo.productos]);
-    const getProductById = useCallback((id) => productIndex[id], [productIndex]);
-    useEffect(() => {
-      if (listas.length && !listas.some((l) => l.key === activeLista)) setActiveLista(listas[0].key);
-    }, [listas, activeLista]);
-    const listaActual = listas.find((l) => l.key === activeLista) || null;
-    const productosLista = useMemo(() => catalogo.productos.filter((p) => p.lista === activeLista), [catalogo.productos, activeLista]);
-    const cartItems = cart.map((i) => ({ product: getProductById(i.id), qty: i.qty })).filter((i) => i.product);
-    const cartQtyOf = (id) => cart.find((i) => i.id === id)?.qty || 0;
-    const selectedProduct = selectedId ? getProductById(selectedId) : null;
-    const isSearching = searchQuery.trim().length > 0;
-    const vistaCat = useMemo(() => listaActual && listaActual.catalogo ? armarCatalogo(activeLista, catalogo.productos, catalogo.grupos, catalogo.sinPrecio, productIndex) : null, [listaActual, activeLista, catalogo, productIndex]);
-    const searchResults = useMemo(() => {
-      if (!isSearching) return [];
-      return (vistaCat ? vistaCat.buscables : productosLista).filter((p) => matchProduct(p, searchQuery, adminConfig.sinonimos));
-    }, [isSearching, searchQuery, productosLista, vistaCat, adminConfig.sinonimos]);
-    const secciones = useMemo(() => {
-      if (vistaCat) return vistaCat.chips.length > 1 ? [{ key: TODAS_KEY, label: "Todas" }, ...vistaCat.chips] : [];
-      const porOrden = (a, b) => (a.orden || 0) - (b.orden || 0);
-      let base = [];
-      if (productosLista.some((p) => p.categoria)) {
-        base = CATEGORIAS.map((c) => ({ ...c, products: productosLista.filter((p) => p.categoria === c.key) })).filter((s) => s.products.length > 0);
-      } else if (productosLista.some((p) => p.grupo)) {
-        const gs = [...GRUPOS_ESPECIALES, { key: "esp-otros", label: "Otras promociones" }];
-        base = gs.map((g) => ({ key: g.key, label: g.label, color: "#1e40af", colorLight: "#eff6ff", products: productosLista.filter((p) => p.grupo === g.key) })).filter((s) => s.products.length > 0);
-      } else if (productosLista.some((p) => p.catRaw)) {
-        const vistas = [];
-        [...productosLista].sort(porOrden).forEach((p) => { if (p.catRaw && vistas.indexOf(p.catRaw) < 0) vistas.push(p.catRaw); });
-        base = vistas.map((c) => ({ key: "cr-" + norm(c).replace(/[^a-z0-9]+/g, "-"), label: c, color: "#1e40af", colorLight: "#eff6ff", products: productosLista.filter((p) => p.catRaw === c).sort(porOrden) }));
-      }
-      if (base.length < 2) return [];
-      return [{ key: TODAS_KEY, label: "Todas", color: "#1e40af", colorLight: "#eff6ff", products: [...productosLista].sort(porOrden) }, ...base];
-    }, [productosLista, vistaCat]);
-    const usaSecciones = secciones.length > 0;
-    useEffect(() => {
-      if (secciones.length && !secciones.some((s) => s.key === activeCat)) setActiveCat(TODAS_KEY);
-    }, [secciones, activeCat]);
-    // Alto de la parte que no se queda pegada: bajando eso, el buscador y los filtros quedan justo bajo la cabecera
-    const altoNavTop = () => navTopRef.current ? navTopRef.current.offsetHeight : 0;
-    const irArriba = () => {
-      try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch (e) { window.scrollTo(0, 0); }
-    };
-    const scrollToCat = (key) => {
-      setActiveCat(key);
-      const y = altoNavTop();
-      if ((window.scrollY || 0) > y) window.scrollTo(0, y);
-    };
-    useEffect(() => {
-      const el = navTopRef.current;
-      if (!el || typeof IntersectionObserver === "undefined") return;
-      const obs = new IntersectionObserver(([e]) => setPasado(!e.isIntersecting), { rootMargin: "-60px 0px 0px 0px" });
-      obs.observe(el);
-      return () => obs.disconnect();
-    }, [verificando, sesion, adminOpen]);
-    useEffect(() => {
-      // al empezar a buscar, los resultados quedan arriba: en el celular el buscador sube bajo la cabecera
-      if (!isSearching) return;
-      const y = altoNavTop();
-      if ((window.scrollY || 0) > y || window.innerWidth < 700) window.scrollTo(0, y);
-    }, [isSearching]);
-    const etiquetaLista = (k) => {
-      const l = listas.find((x) => x.key === k);
-      return l ? l.labelCorto || l.label : k;
-    };
-    const notaDe = (p) => {
-      if (!p || !p.esCat) return "";
-      const de = (g) => { const d = (catalogo.grupos || []).find((x) => x.lista_id === p.lista && x.grupo === g); return d && d.nota || ""; };
-      const i = (p.catRaw || "").indexOf(" \xB7 ");
-      const propia = de(p.catRaw), base = i > 0 ? de(p.catRaw.slice(0, i)) : "";
-      return [propia && i > 0 ? propia.replace(/\.$/, "") + "." : propia, base].filter(Boolean).join(" ");
-    };
-    const closeSearch = () => {
-      setSearchQuery("");
-    };
-    const overrides = adminConfig.imagenes;
-    const videos = adminConfig.videos;
-    const bonoDe = useCallback((listaKey) => {
-      const extra = bonoDeLista(adminConfig.bonosExtra, listaKey);
-      const total = (bonoInfo.porcentaje || 0) + extra;
-      return { activo: total > 0, porcentaje: total, base: bonoInfo.porcentaje || 0, extra };
-    }, [adminConfig.bonosExtra, bonoInfo]);
-    const openProduct = (id) => {
-      const p = (catalogo.productos || []).find((x) => x.id === id);
-      if (p) rastrear("ver_producto", { lista: p.lista, codigo: p.codigo, nombre: p.name, precio: p.cashPrice });
-      openProductRaw(id);
-    };
-    useEffect(() => { if (sesion && activeLista) rastrear("ver_lista", { lista: activeLista }); }, [activeLista, sesion]);
-    const bonoActivoLista = bonoDe(activeLista);
-    const renderTile = (p) => h(ProductTile, { key: p.id, product: p, cartQty: cartQtyOf(p.id), onOpen: openProduct, imageOverrides: overrides });
-    if (verificando) return h("div", { className: "login-wrap" }, h("div", { className: "login-box" }, h("p", { className: "login-sub" }, "Un momento\u2026")));
-    if (!sesion && !adminOpen) return h(Ingreso, { onEntrar: (d) => { sesionTok = d.token; setSesion(d); } });
-    return h("div", { className: "app" }, h("header", { className: "header" }, h("div", { className: "header-in" }, h("h1", { className: "header-t", onClick: irArriba }, "Precios y Promociones"), h("div", { className: "header-right" }, pasado && listaActual && h("button", { className: "header-lista", onClick: irArriba, title: "Volver arriba para cambiar de lista" }, h(ArribaSvg, null), h("span", null, listaActual.labelCorto || listaActual.label)), bonoActivoLista.activo && !(listaActual && listaActual.sinPuntos) && h("div", { className: "bonus-pill", title: (bonoInfo.semana ? `${bonoInfo.semana}% por ser primera semana del per\xEDodo` : "Puntaje adicional vigente") + (bonoActivoLista.extra ? ` + ${bonoActivoLista.extra}% de esta lista` : "") }, h(ClockSvg, null), h("span", null, "+", bonoActivoLista.porcentaje, "%"))))), h("main", { className: "main" }, h("div", { className: "nav-top", ref: navTopRef }, listas.length > 1 && listaActual && listaActual.actualizada && h("div", { className: "lista-fecha" }, "Actualizada al ", new Date(listaActual.actualizada).toLocaleDateString("es-PE", { day: "2-digit", month: "short", year: "numeric", timeZone: "America/Lima" })), h("div", { className: "lista-switch", style: { "--nd": listas.length <= 6 ? listas.length : Math.ceil(listas.length / 2) } }, listas.map((l, i) => h("button", { key: l.key, className: `lista-btn ${activeLista === l.key ? "on" : ""}`, style: { "--sp": repartoListas(listas.length)[i] }, onClick: () => {
-      setActiveLista(l.key);
-      setActiveCat(TODAS_KEY);
-      setSimOpen(false);
-      setPromosOpen(false);
-      closeSearch();
-    }, title: l.label }, l.labelCorto || l.label))), !isSearching && h("div", { className: "acciones-row" }, listaActual && !listaActual.sinPuntos && h("button", { className: "accion-btn", onClick: () => { rastrear("simulador", { lista: activeLista }); setSimOpen(true); } }, h(SparkSvg, null), " Simulador de puntos"), h("button", { className: "accion-btn", onClick: () => { rastrear("comparador", { lista: activeLista }); setPromosOpen(true); } }, h(SearchSvg, { s: 15 }), " Buscador maestro")), listaActual && listaActual.aviso && !isSearching && h("div", { className: "info-banner orange aviso-lista" }, h(InfoSvg, null), h("span", null, listaActual.aviso))), h("div", { className: `sticky-nav ${pasado ? "pegado" : ""}` }, h("div", { className: "nav-row" }, h("div", { className: "search-bar" }, h(SearchSvg, { s: 17 }), h("input", { type: "text", value: searchQuery, onChange: (e) => setSearchQuery(e.target.value), placeholder: vistaCat ? (activeLista === "servicios" ? "Buscar servicio…" : "Buscar repuesto: nombre o c\xF3digo…") : "Buscar producto: nombre, c\xF3digo o N\xB0..." }), searchQuery && h("button", { className: "search-clear", onClick: () => setSearchQuery(""), title: "Limpiar b\xFAsqueda" }, h(XSvg, { s: 14 }))), usaSecciones && !isSearching && h("div", { className: "nav-tabs" }, secciones.map((c) => h("button", { key: c.key, className: `nav-tab ${activeCat === c.key ? "active" : ""}`, onClick: () => scrollToCat(c.key) }, c.label))))), catalogoState === "loading" ? h("div", { className: "empty-state" }, h("p", null, "Cargando lista de precios\u2026")) : catalogoState === "error" ? h("div", { className: "empty-state" }, h("p", null, "No se pudo cargar la lista de precios."), h("span", { style: { fontSize: 13, color: "#9ca3af" } }, "Revisa tu conexi\xF3n y vuelve a intentar.")) : isSearching ? h(React.Fragment, null, h("div", { className: "results-info" }, searchResults.length, " resultado", searchResults.length !== 1 ? "s" : "", ' para "', searchQuery, '"'), searchResults.length > 0 ? (vistaCat ? h("div", { className: "filas" }, searchResults.map((p) => h(FilaCatalogo, { key: p.id, p, etiqueta: p.lista === activeLista ? p.catRaw + (p.sub ? " \xB7 " + p.sub : "") : "", externo: p.lista !== activeLista, listaNombre: etiquetaLista(p.lista), onOpen: openProduct, imageOverrides: overrides }))) : h("div", { className: "grid" }, searchResults.map(renderTile))) : h("div", { className: "empty-state" }, h("p", null, 'No se encontr\xF3 "', searchQuery, '"'), h("span", { style: { fontSize: 13, color: "#9ca3af" } }, "Prueba con otro nombre o el c\xF3digo del producto."))) : vistaCat ? (vistaCat.secciones.length === 0 ? h("div", { className: "empty-state" }, h("p", null, "Esta lista no tiene productos vigentes.")) : h("div", { className: "cat-wrap" }, vistaCat.secciones.filter((x) => activeCat === TODAS_KEY || x.chip === activeCat).map((x) => h(SeccionCatalogo, { key: x.key, s: x, conFamilia: activeCat === TODAS_KEY, etiquetaLista, onOpen: openProduct, imageOverrides: overrides })))) : !usaSecciones ? productosLista.length === 0 ? h("div", { className: "empty-state" }, h("p", null, "Esta lista no tiene productos vigentes.")) : h("div", { className: "grid" }, productosLista.map(renderTile)) : (() => {
-      const sec = secciones.find((s) => s.key === activeCat) || secciones[0];
-      return h(React.Fragment, null, h("div", { className: "cat-header" }, h("span", { className: "cat-dot", style: { background: sec.color } }), h("h2", null, sec.label), h("span", { className: "cat-count" }, sec.products.length)), h("div", { className: "grid" }, sec.products.map(renderTile)));
-    })()), promosOpen && h(ComparadorPromos, { listas, productos: catalogo.productos, piezas: catalogo.piezas, onClose: () => setPromosOpen(false), onIr: (p) => {
-      setPromosOpen(false);
-      setSimOpen(false);
-      closeSearch();
-      setActiveLista(p.lista);
-      setActiveCat(TODAS_KEY);
-      openProduct(p.id);
-    } }), simOpen && listaActual && h(SimuladorPuntos, { lista: listaActual, productos: productosLista, bono: bonoActivoLista.porcentaje || 0, onClose: () => setSimOpen(false) }), selectedProduct && h(ProductModal, { key: selectedProduct.id, product: selectedProduct, bonoInfo: bonoDe(selectedProduct.lista), cartQty: 0, imageOverrides: overrides, videoLinks: videos, metas: adminConfig.metas, reglasLista: listas.find((l) => l.key === selectedProduct.lista) || null, notaGrupo: notaDe(selectedProduct), textoVideo: ((adminConfig.mensajes && adminConfig.mensajes[selectedProduct.codigo]) || (adminConfig.textos && adminConfig.textos.videoWhatsapp) || TEXTO_VIDEO_DEFAULT).replace(/\{producto\}/g, selectedProduct.name), onAdd: () => {
-    }, onSub: () => {
-    }, onRemove: () => {
-    }, onViewCart: () => {
-    }, onClose: () => setSelectedId(null) }), h(AdminPanel, { open: adminOpen, config: adminConfig, setConfig: (u) => {
-      adminTouched.current = true;
-      setAdminConfig(u);
-    }, saveState, sbReady, productos: catalogo.productos, listas: catalogo.listas, onSaveNow: saveNow, onClose: () => {
-      setAdminOpen(false);
-      try {
-        if (/admin/i.test(location.pathname + location.hash)) history.replaceState(null, "", "/");
-      } catch (e) {
-      }
-    } }), h("style", null, `
+  // Una sola hoja de estilos para todas las pantallas (ingreso, espera, portal y admin): va en <head> al arrancar
+  var ESTILOS = `
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800&display=swap');
         *{box-sizing:border-box;margin:0;padding:0}
         :root{--bg:#f4f1ec;--card:#fff;--text:#1a1a1a;--muted:#6b7280;--border:#e5e1db;--blue:#2563eb;--blueL:#eff6ff;--green:#059669;--greenL:#ecfdf5;--red:#dc2626;--redL:#fef2f2;--indigo:#4f46e5;--indigoL:#eef2ff;--indigoD:#312e81;--amber:#d97706;--amberL:#fffbeb;--r:14px;--rs:8px;--shadow:0 1px 3px rgba(0,0,0,.06),0 4px 12px rgba(0,0,0,.04)}
@@ -2161,6 +1910,15 @@
         .lista-btn{grid-column:span var(--sp,2);min-width:0;padding:10px 8px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;background:#fff;color:#475569;transition:all .18s;font-family:inherit;line-height:1.2;text-align:center;box-shadow:0 1px 2px rgba(0,0,0,.04)}
         .lista-btn:hover{border-color:#94a3b8;color:#0f172a}
         .lista-btn.on{background:var(--blue);border-color:var(--blue);color:#fff;box-shadow:0 3px 10px rgba(37,99,235,.32)}
+        .lista-btn{display:flex;flex-direction:column;align-items:center;justify-content:center}
+        .lista-nom{display:block}
+        .lista-esp{display:block;margin-top:3px;font-size:10px;line-height:1.25;color:#c2410c}
+        .lista-esp b{font-weight:800;white-space:nowrap}
+        .lista-esp i{font-style:normal;font-weight:600;white-space:nowrap}
+        .lista-btn.esp{background:#fff7ed;border-color:#fdba74;color:#9a3412}
+        .lista-btn.esp:hover{border-color:#f97316;color:#7c2d12}
+        .lista-btn.esp.on{background:#c2410c;border-color:#c2410c;color:#fff;box-shadow:0 3px 10px rgba(194,65,12,.32)}
+        .lista-btn.esp.on .lista-esp{color:#ffedd5}
         .nav-row{display:flex;flex-direction:column}
         .nav-tabs{display:flex;gap:4px;overflow-x:auto;-ms-overflow-style:none;scrollbar-width:none;padding-bottom:2px}
         .search-bar{display:flex;align-items:center;gap:9px;background:#fff;border:1.5px solid var(--border);border-radius:11px;padding:10px 13px;margin:7px 0 5px;box-shadow:var(--shadow)}
@@ -2333,23 +2091,35 @@
         .cm-row.hl{font-weight:800;color:var(--text);font-size:14px;align-items:center;border-top:1px solid var(--border);margin-top:4px;padding-top:7px}
         .cm-row.hl em{display:block;font-style:normal;font-size:11.5px;font-weight:600;color:var(--muted)}
         .cm-row .cm-save{color:var(--green);font-weight:700}
-        .login-wrap{position:relative;min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:22px;background:linear-gradient(165deg,#0f2740 0%,#12365a 45%,#0b1f33 100%);overflow:hidden}
-        .login-deco{position:absolute;inset:0;background:radial-gradient(900px 420px at 18% -8%,rgba(34,197,94,.20),transparent 62%),radial-gradient(700px 380px at 100% 106%,rgba(79,70,229,.24),transparent 60%);pointer-events:none}
-        .login-box{position:relative;width:100%;max-width:372px;background:rgba(255,255,255,.98);border-radius:20px;padding:28px 24px 22px;text-align:center;box-shadow:0 22px 60px rgba(4,14,26,.42)}
-        .login-marca{margin-bottom:20px}
-        .login-rw{display:block;font-size:16px;font-weight:800;letter-spacing:.28em;color:#0f2740}
-        .login-anos{display:block;margin-top:3px;font-size:10.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--green)}
-        .login-box h2{font-size:21px;font-weight:800;line-height:1.2;margin-bottom:7px}
-        .login-sub{font-size:13px;color:var(--muted);line-height:1.5;margin-bottom:18px}
-        .login-campo{display:flex;align-items:stretch;border:1.5px solid var(--border);border-radius:12px;overflow:hidden;background:#fff}
-        .login-campo:focus-within{border-color:var(--indigo);box-shadow:0 0 0 3px rgba(79,70,229,.12)}
-        .login-pref{display:flex;align-items:center;padding:0 12px;background:var(--bg);border-right:1.5px solid var(--border);font-size:14.5px;font-weight:800;color:var(--muted)}
-        .login-input{flex:1;min-width:0;border:none;outline:none;padding:15px 12px;font-size:19px;font-weight:700;font-family:inherit;letter-spacing:.05em;background:transparent}
-        .login-err{display:flex;align-items:flex-start;gap:7px;margin-top:11px;padding:10px 11px;background:#fef2f2;border-radius:10px;font-size:12.5px;font-weight:700;color:var(--red);line-height:1.45;text-align:left}
-        .login-btn{width:100%;margin-top:14px;padding:15px;border:none;border-radius:12px;background:var(--indigo);color:#fff;font-size:15.5px;font-weight:800;font-family:inherit;cursor:pointer}
+        .login-wrap{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;background:#0f172a}
+        .login-lado{position:relative;flex:1 1 auto;min-height:46vh;min-height:46dvh;display:flex;flex-direction:column;justify-content:space-between;gap:30px;padding:26px 24px 50px;color:#fff;overflow:hidden;background:radial-gradient(130% 95% at 0% 100%,#1c2c4f 0%,#0f172a 60%)}
+        .login-tapa{position:absolute;right:-92px;top:-104px;width:270px;height:270px;border-radius:50%;pointer-events:none;background:radial-gradient(circle at 46% 44%,rgba(255,255,255,.55) 0 1.4%,rgba(255,255,255,0) 4.2%),radial-gradient(circle,#2b303a 0 8.6%,#0d1015 9% 12.4%,rgba(13,16,21,0) 12.8%),radial-gradient(circle,rgba(255,255,255,0) 0 15.2%,rgba(255,255,255,.4) 15.6% 16.2%,rgba(255,255,255,0) 16.8%),repeating-radial-gradient(circle,rgba(255,255,255,.06) 0 1px,rgba(15,23,42,.05) 1px 3px),conic-gradient(from 35deg,#eef2f5,#93a0ad 12%,#e3e8ed 24%,#7b8896 38%,#f5f7f9 50%,#8f9ca9 62%,#e6ebef 74%,#7f8c99 88%,#eef2f5);box-shadow:inset 0 0 0 9px rgba(255,255,255,.22),inset 0 0 0 10px rgba(15,23,42,.28),inset 0 0 44px rgba(15,23,42,.2),0 26px 60px rgba(2,8,23,.55)}
+        .login-marca{position:relative}
+        .login-rw{display:block;font-size:15px;font-weight:800;letter-spacing:.3em;color:#fff}
+        .login-anos{display:block;margin-top:5px;font-size:12px;font-weight:600;color:#6ee7b7}
+        .login-titular{position:relative}
+        .login-titular h2{margin:0 0 12px;font-size:clamp(36px,10.4vw,60px);font-weight:800;line-height:1.02;letter-spacing:-.035em;color:#fff}
+        .login-sub{margin:0;max-width:36ch;font-size:14.5px;line-height:1.55;color:#c5cedb}
+        .login-box{position:relative;flex:0 0 auto;margin-top:-24px;padding:28px 24px calc(28px + env(safe-area-inset-bottom));background:#fff;border-radius:26px 26px 0 0;box-shadow:0 -12px 34px rgba(2,8,23,.3)}
+        .login-box-in{max-width:400px;margin:0 auto}
+        .login-rot{display:block;margin-bottom:8px;font-size:14px;font-weight:700;color:var(--text)}
+        .login-campo{display:flex;align-items:stretch;border:1.5px solid #cfd6de;border-radius:14px;overflow:hidden;background:#fff;transition:border-color .15s,box-shadow .15s}
+        .login-campo:focus-within{border-color:var(--blue);box-shadow:0 0 0 4px rgba(37,99,235,.14)}
+        .login-pref{display:flex;align-items:center;padding:0 14px;background:#f3f5f8;border-right:1.5px solid #cfd6de;font-size:15px;font-weight:700;color:#56616d}
+        .login-input{flex:1;min-width:0;border:none;outline:none;padding:16px 14px;font-size:21px;font-weight:700;font-family:inherit;letter-spacing:.04em;background:transparent;color:var(--text)}
+        .login-input::placeholder{color:#b6bec8;font-weight:500}
+        .login-ayuda{margin:8px 2px 0;font-size:12.5px;line-height:1.45;color:var(--muted)}
+        .login-err{display:flex;align-items:flex-start;gap:7px;margin-top:12px;padding:10px 11px;background:#fef2f2;border-radius:10px;font-size:12.5px;font-weight:700;color:var(--red);line-height:1.45;text-align:left}
+        .login-btn{width:100%;margin-top:16px;padding:16px;border:none;border-radius:14px;background:var(--blue);color:#fff;font-size:16px;font-weight:800;font-family:inherit;cursor:pointer;box-shadow:0 8px 20px rgba(37,99,235,.28);transition:background .15s,transform .1s}
+        .login-btn:hover{background:#1d4ed8}
+        .login-btn:focus-visible{outline:3px solid rgba(37,99,235,.4);outline-offset:3px}
         .login-btn:active{transform:scale(.99)}
-        .login-btn:disabled{opacity:.5}
-        .login-pie{margin-top:13px;font-size:11.5px;color:var(--muted)}
+        .login-btn:disabled{opacity:.55;box-shadow:none}
+        .login-pie{margin-top:14px;font-size:12.5px;line-height:1.5;color:var(--muted);text-align:center}
+        .login-espera{min-height:100vh;min-height:100dvh;display:flex;align-items:center;justify-content:center;background:#0f172a;color:#c5cedb;font-size:14px;font-weight:600}
+        @keyframes loginSube{from{transform:translateY(14px);opacity:0}to{transform:none;opacity:1}}
+        @media(prefers-reduced-motion:no-preference){.login-box-in{animation:loginSube .5s cubic-bezier(.2,.7,.2,1) both}}
+        @media(min-width:900px){.login-wrap{flex-direction:row}.login-lado{flex:1.2 1 0;min-height:100vh;min-height:100dvh;padding:52px 60px 60px}.login-tapa{right:-150px;top:-170px;width:520px;height:520px}.login-sub{font-size:16.5px;max-width:40ch}.login-box{flex:1 1 0;display:flex;align-items:center;margin-top:0;padding:48px;border-radius:0;background:var(--bg);box-shadow:none}.login-box-in{width:100%;padding:36px 34px 30px;background:#fff;border:1px solid var(--border);border-radius:22px;box-shadow:0 22px 50px rgba(15,23,42,.08)}}
         .asr-tot{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px;font-size:12px;color:var(--muted)}
         .asr-tot .rojo{color:var(--red)}
         .asr-busca{width:100%;border:1.5px solid var(--border);border-radius:10px;padding:11px;font-size:14px;font-family:inherit;background:#fff;margin-bottom:8px}
@@ -2708,7 +2478,288 @@
         .cat-pie{font-size:11.8px;color:var(--muted);line-height:1.5}
         .admin-okbtn{background:var(--blue);color:#fff;border:none;font-size:12px;font-weight:700;padding:9px 14px;border-radius:8px;cursor:pointer;font-family:inherit;white-space:nowrap}
         .admin-okbtn:disabled{opacity:.6;cursor:default}
-      `));
+      `;
+  (function () {
+    try {
+      var hoja = document.createElement("style");
+      hoja.id = "estilos-portal";
+      hoja.textContent = ESTILOS;
+      document.head.appendChild(hoja);
+    } catch (e) {}
+  })();
+  function App() {
+    const [catalogoTodo, setCatalogo] = useState({ listas: [], productos: [], piezas: [], grupos: [], sinPrecio: [] });
+    const [catalogoState, setCatalogoState] = useState("loading");
+    const [activeLista, setActiveLista] = useState("general");
+    const [activeCat, setActiveCat] = useState(TODAS_KEY);
+    const [searchQuery, setSearchQuery] = useState("");
+    const [bonoInfo, setBonoInfo] = useState({ activo: false, porcentaje: 0 });
+    const [cart, setCart] = useState([]);
+    const [cartOpen, setCartOpen] = useState(false);
+    const [adminOpen, setAdminOpen] = useState(() => {
+      try {
+        const p = (location.pathname || "").replace(/\/+$/, "").toLowerCase();
+        return p.endsWith("/admin") || location.hash.toLowerCase().replace(/\//g, "") === "#admin" || /(?:^|[?&])admin(?:=|&|$)/i.test(location.search);
+      } catch (e) {
+        return false;
+      }
+    });
+    const [adminConfig, setAdminConfig] = useState(DEFAULT_CONFIG);
+    const [configLoaded, setConfigLoaded] = useState(false);
+    const [saveState, setSaveState] = useState("idle");
+    const [sesion, setSesion] = useState(null);
+    const [verificando, setVerificando] = useState(true);
+    const [selectedId, setSelectedId] = useState(null);
+    // Vista completa (Tienda en L\xEDnea, simulador de puntos y buscador maestro): solo quien la base marca. Los dem\xE1s ven Lista General, especiales, Repuestos y Servicios.
+    const completa = !!(sesion && sesion.completa);
+    const catalogo = useMemo(() => completa ? catalogoTodo : Object.assign({}, catalogoTodo, {
+      listas: (catalogoTodo.listas || []).filter((l) => LISTAS_VISTA_COMPLETA.indexOf(l.key) < 0),
+      productos: (catalogoTodo.productos || []).filter((p) => LISTAS_VISTA_COMPLETA.indexOf(p.lista) < 0)
+    }), [catalogoTodo, completa]);
+    useEffect(() => {
+      let vivo = true;
+      (async () => {
+        const tk = leerTok(SESION_KEY);
+        if (!tk || !sb) { if (vivo) setVerificando(false); return; }
+        try {
+          const { data, error } = await sb.rpc("asesor_sesion_valida", { p_token: tk });
+          if (error) throw error;
+          if (data && data.ok) { sesionTok = tk; if (vivo) setSesion({ token: tk, nombre: data.nombre, celular: data.celular, completa: !!data.completa }); }
+          else guardarTok(SESION_KEY, "");
+        } catch (e) { guardarTok(SESION_KEY, ""); }
+        if (vivo) setVerificando(false);
+      })();
+      return () => { vivo = false; };
+    }, []);
+    useEffect(() => {
+      if (!sesion) return;
+      const t = setInterval(() => { if (!document.hidden) rastrear("latido", {}); }, 60000);
+      return () => clearInterval(t);
+    }, [sesion]);
+    const [simOpen, setSimOpen] = useState(false);
+    const [promosOpen, setPromosOpen] = useState(false);
+    const sectionRefs = useRef({});
+    const navTopRef = useRef(null);
+    const [pasado, setPasado] = useState(false);     // la parte alta (listas y acciones) ya quedó fuera de la vista
+    const searchInputRef = useRef(null);
+    const clickScrolling = useRef(false);
+    const adminTouched = useRef(false);
+    const saveTimer = useRef(null);
+    useEffect(() => {
+      let alive = true;
+      try {
+        const cached = loadConfigLocal();
+        if (cached && (Object.keys(cached.imagenes || {}).length || Object.keys(cached.videos || {}).length || (cached.bonosExtra || []).length)) {
+          setAdminConfig(cached);
+          setConfigLoaded(true);
+        }
+      } catch (e) {
+      }
+      (async () => {
+        const cfg = await fetchConfig();
+        if (!alive) return;
+        setAdminConfig(cfg);
+        setConfigLoaded(true);
+        try {
+          saveConfigLocal(cfg);
+        } catch (e) {
+        }
+      })();
+      return () => {
+        alive = false;
+      };
+    }, []);
+    useEffect(() => {
+      let alive = true;
+      try {
+        const raw = localStorage.getItem(CATALOG_CACHE_KEY);
+        if (raw) {
+          const c = JSON.parse(raw);
+          if (c && c.productos && c.productos.length) {
+            aplicarReglas(c.reglas, c.factores);
+            setCatalogo({ listas: c.listas || [], productos: c.productos, piezas: c.piezas || [], grupos: c.grupos || [], sinPrecio: c.sinPrecio || [] });
+            setCatalogoState("ok");
+          }
+        }
+      } catch (e) {
+      }
+      (async () => {
+        try {
+          const cat = await fetchCatalogo();
+          if (!alive) return;
+          setCatalogo(cat);
+          setCatalogoState("ok");
+          try {
+            localStorage.setItem(CATALOG_CACHE_KEY, JSON.stringify({ ...cat, reglas: { pct_inicial_minima: CONFIG.inicialMinPercent, saldo_minimo: CONFIG.capitalMinimoFinanciar, cuota_minima: CONFIG.cuotaMinimaPermitida, gasto_mensual: CONFIG.gastoAdminMensual, contado_minimo_100: CONFIG.precioSoloContado }, factores: CONFIG.plazos.map((m) => ({ meses: m, factor: FACTORES[m] })) }));
+          } catch (e) {
+          }
+        } catch (e) {
+          if (!alive) return;
+          setCatalogoState((prev) => prev === "ok" ? "ok" : "error");
+        }
+      })();
+      return () => {
+        alive = false;
+      };
+    }, []);
+    useEffect(() => {
+      if (!configLoaded || !adminTouched.current) return;
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      setSaveState("saving");
+      saveTimer.current = setTimeout(async () => {
+        const res = await saveConfigRemote(adminConfig);
+        setSaveState(res.ok ? "saved" : "error");
+      }, 700);
+      return () => {
+        if (saveTimer.current) clearTimeout(saveTimer.current);
+      };
+    }, [adminConfig, configLoaded]);
+    const saveNow = useCallback(async () => {
+      setSaveState("saving");
+      const res = await saveConfigRemote(adminConfig);
+      setSaveState(res.ok ? "saved" : "error");
+    }, [adminConfig]);
+    useEffect(() => {
+      setBonoInfo(evaluarBonos(adminConfig.bonosExtra, adminConfig.bonoSemana));
+    }, [adminConfig.bonosExtra, adminConfig.bonoSemana]);
+    useEffect(() => {
+      const lock = cartOpen || adminOpen || selectedId || simOpen || promosOpen;
+      document.body.style.overflow = lock ? "hidden" : "";
+      return () => {
+        document.body.style.overflow = "";
+      };
+    }, [cartOpen, adminOpen, selectedId, simOpen, promosOpen]);
+    const addToCart = useCallback((id) => setCart((prev) => {
+      const f = prev.find((i) => i.id === id);
+      return f ? prev.map((i) => i.id === id ? { ...i, qty: i.qty + 1 } : i) : [...prev, { id, qty: 1 }];
+    }), []);
+    const subFromCart = useCallback((id) => setCart((prev) => prev.flatMap((i) => i.id === id ? i.qty - 1 <= 0 ? [] : [{ ...i, qty: i.qty - 1 }] : [i])), []);
+    const removeFromCart = useCallback((id) => setCart((prev) => prev.filter((i) => i.id !== id)), []);
+    const clearCart = useCallback(() => setCart([]), []);
+    const openProductRaw = useCallback((id) => setSelectedId(id), []);
+    const cartCount = cart.reduce((s, i) => s + i.qty, 0);
+    const listas = catalogo.listas;
+    const productIndex = useMemo(() => Object.fromEntries(catalogo.productos.map((p) => [p.id, p])), [catalogo.productos]);
+    const getProductById = useCallback((id) => productIndex[id], [productIndex]);
+    useEffect(() => {
+      if (listas.length && !listas.some((l) => l.key === activeLista)) setActiveLista(listas[0].key);
+    }, [listas, activeLista]);
+    const listaActual = listas.find((l) => l.key === activeLista) || null;
+    const productosLista = useMemo(() => catalogo.productos.filter((p) => p.lista === activeLista), [catalogo.productos, activeLista]);
+    const cartItems = cart.map((i) => ({ product: getProductById(i.id), qty: i.qty })).filter((i) => i.product);
+    const cartQtyOf = (id) => cart.find((i) => i.id === id)?.qty || 0;
+    const selectedProduct = selectedId ? getProductById(selectedId) : null;
+    const isSearching = searchQuery.trim().length > 0;
+    const vistaCat = useMemo(() => listaActual && listaActual.catalogo ? armarCatalogo(activeLista, catalogo.productos, catalogo.grupos, catalogo.sinPrecio, productIndex) : null, [listaActual, activeLista, catalogo, productIndex]);
+    const searchResults = useMemo(() => {
+      if (!isSearching) return [];
+      return (vistaCat ? vistaCat.buscables : productosLista).filter((p) => matchProduct(p, searchQuery, adminConfig.sinonimos));
+    }, [isSearching, searchQuery, productosLista, vistaCat, adminConfig.sinonimos]);
+    const secciones = useMemo(() => {
+      if (vistaCat) return vistaCat.chips.length > 1 ? [{ key: TODAS_KEY, label: "Todas" }, ...vistaCat.chips] : [];
+      const porOrden = (a, b) => (a.orden || 0) - (b.orden || 0);
+      let base = [];
+      if (productosLista.some((p) => p.categoria)) {
+        base = CATEGORIAS.map((c) => ({ ...c, products: productosLista.filter((p) => p.categoria === c.key) })).filter((s) => s.products.length > 0);
+      } else if (productosLista.some((p) => p.grupo)) {
+        const gs = [...GRUPOS_ESPECIALES, { key: "esp-otros", label: "Otras promociones" }];
+        base = gs.map((g) => ({ key: g.key, label: g.label, color: "#1e40af", colorLight: "#eff6ff", products: productosLista.filter((p) => p.grupo === g.key) })).filter((s) => s.products.length > 0);
+      } else if (productosLista.some((p) => p.catRaw)) {
+        const vistas = [];
+        [...productosLista].sort(porOrden).forEach((p) => { if (p.catRaw && vistas.indexOf(p.catRaw) < 0) vistas.push(p.catRaw); });
+        base = vistas.map((c) => ({ key: "cr-" + norm(c).replace(/[^a-z0-9]+/g, "-"), label: c, color: "#1e40af", colorLight: "#eff6ff", products: productosLista.filter((p) => p.catRaw === c).sort(porOrden) }));
+      }
+      if (base.length < 2) return [];
+      return [{ key: TODAS_KEY, label: "Todas", color: "#1e40af", colorLight: "#eff6ff", products: [...productosLista].sort(porOrden) }, ...base];
+    }, [productosLista, vistaCat]);
+    const usaSecciones = secciones.length > 0;
+    useEffect(() => {
+      if (secciones.length && !secciones.some((s) => s.key === activeCat)) setActiveCat(TODAS_KEY);
+    }, [secciones, activeCat]);
+    // Alto de la parte que no se queda pegada: bajando eso, el buscador y los filtros quedan justo bajo la cabecera
+    const altoNavTop = () => navTopRef.current ? navTopRef.current.offsetHeight : 0;
+    const irArriba = () => {
+      try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch (e) { window.scrollTo(0, 0); }
+    };
+    const scrollToCat = (key) => {
+      setActiveCat(key);
+      const y = altoNavTop();
+      if ((window.scrollY || 0) > y) window.scrollTo(0, y);
+    };
+    useEffect(() => {
+      const el = navTopRef.current;
+      if (!el || typeof IntersectionObserver === "undefined") return;
+      const obs = new IntersectionObserver(([e]) => setPasado(!e.isIntersecting), { rootMargin: "-60px 0px 0px 0px" });
+      obs.observe(el);
+      return () => obs.disconnect();
+    }, [verificando, sesion, adminOpen]);
+    useEffect(() => {
+      // al empezar a buscar, los resultados quedan arriba: en el celular el buscador sube bajo la cabecera
+      if (!isSearching) return;
+      const y = altoNavTop();
+      if ((window.scrollY || 0) > y || window.innerWidth < 700) window.scrollTo(0, y);
+    }, [isSearching]);
+    const etiquetaLista = (k) => {
+      const l = listas.find((x) => x.key === k);
+      return l ? l.labelCorto || l.label : k;
+    };
+    const notaDe = (p) => {
+      if (!p || !p.esCat) return "";
+      const de = (g) => { const d = (catalogo.grupos || []).find((x) => x.lista_id === p.lista && x.grupo === g); return d && d.nota || ""; };
+      const i = (p.catRaw || "").indexOf(" \xB7 ");
+      const propia = de(p.catRaw), base = i > 0 ? de(p.catRaw.slice(0, i)) : "";
+      return [propia && i > 0 ? propia.replace(/\.$/, "") + "." : propia, base].filter(Boolean).join(" ");
+    };
+    const closeSearch = () => {
+      setSearchQuery("");
+    };
+    const overrides = adminConfig.imagenes;
+    const videos = adminConfig.videos;
+    const bonoDe = useCallback((listaKey) => {
+      const extra = bonoDeLista(adminConfig.bonosExtra, listaKey);
+      const total = (bonoInfo.porcentaje || 0) + extra;
+      return { activo: total > 0, porcentaje: total, base: bonoInfo.porcentaje || 0, extra };
+    }, [adminConfig.bonosExtra, bonoInfo]);
+    const openProduct = (id) => {
+      const p = (catalogo.productos || []).find((x) => x.id === id);
+      if (p) rastrear("ver_producto", { lista: p.lista, codigo: p.codigo, nombre: p.name, precio: p.cashPrice });
+      openProductRaw(id);
+    };
+    useEffect(() => { if (sesion && activeLista) rastrear("ver_lista", { lista: activeLista }); }, [activeLista, sesion]);
+    const bonoActivoLista = bonoDe(activeLista);
+    const renderTile = (p) => h(ProductTile, { key: p.id, product: p, cartQty: cartQtyOf(p.id), onOpen: openProduct, imageOverrides: overrides });
+    if (verificando) return h("div", { className: "login-espera" }, "Un momento\u2026");
+    if (!sesion && !adminOpen) return h(Ingreso, { onEntrar: (d) => { sesionTok = d.token; setSesion(d); } });
+    return h("div", { className: "app" }, h("header", { className: "header" }, h("div", { className: "header-in" }, h("h1", { className: "header-t", onClick: irArriba }, "Precios y Promociones"), h("div", { className: "header-right" }, pasado && listaActual && h("button", { className: "header-lista", onClick: irArriba, title: "Volver arriba para cambiar de lista" }, h(ArribaSvg, null), h("span", null, listaActual.labelCorto || listaActual.label)), bonoActivoLista.activo && !(listaActual && listaActual.sinPuntos) && h("div", { className: "bonus-pill", title: (bonoInfo.semana ? `${bonoInfo.semana}% por ser primera semana del per\xEDodo` : "Puntaje adicional vigente") + (bonoActivoLista.extra ? ` + ${bonoActivoLista.extra}% de esta lista` : "") }, h(ClockSvg, null), h("span", null, "+", bonoActivoLista.porcentaje, "%"))))), h("main", { className: "main" }, h("div", { className: "nav-top", ref: navTopRef }, listas.length > 1 && listaActual && listaActual.actualizada && h("div", { className: "lista-fecha" }, "Actualizada al ", new Date(listaActual.actualizada).toLocaleDateString("es-PE", { day: "2-digit", month: "short", year: "numeric", timeZone: "America/Lima" })), h("div", { className: "lista-switch", style: { "--nd": listas.length <= 6 ? listas.length : Math.ceil(listas.length / 2) } }, listas.map((l, i) => h("button", { key: l.key, className: `lista-btn ${l.especial ? "esp " : ""}${activeLista === l.key ? "on" : ""}`, style: { "--sp": repartoListas(listas.length)[i] }, onClick: () => {
+      setActiveLista(l.key);
+      setActiveCat(TODAS_KEY);
+      setSimOpen(false);
+      setPromosOpen(false);
+      closeSearch();
+    }, title: l.label }, h("span", { className: "lista-nom" }, l.labelCorto || l.label), l.especial && h("span", { className: "lista-esp" }, h("b", null, "Especial"), l.hasta ? " " : null, l.hasta ? h("i", null, "hasta ", diaMesCorto(l.hasta)) : null)))), completa && !isSearching && h("div", { className: "acciones-row" }, listaActual && !listaActual.sinPuntos && h("button", { className: "accion-btn", onClick: () => { rastrear("simulador", { lista: activeLista }); setSimOpen(true); } }, h(SparkSvg, null), " Simulador de puntos"), h("button", { className: "accion-btn", onClick: () => { rastrear("comparador", { lista: activeLista }); setPromosOpen(true); } }, h(SearchSvg, { s: 15 }), " Buscador maestro")), listaActual && listaActual.aviso && !isSearching && h("div", { className: "info-banner orange aviso-lista" }, h(InfoSvg, null), h("span", null, listaActual.aviso))), h("div", { className: `sticky-nav ${pasado ? "pegado" : ""}` }, h("div", { className: "nav-row" }, h("div", { className: "search-bar" }, h(SearchSvg, { s: 17 }), h("input", { type: "text", value: searchQuery, onChange: (e) => setSearchQuery(e.target.value), placeholder: vistaCat ? (activeLista === "servicios" ? "Buscar servicio…" : "Buscar repuesto: nombre o c\xF3digo…") : "Buscar producto: nombre, c\xF3digo o N\xB0..." }), searchQuery && h("button", { className: "search-clear", onClick: () => setSearchQuery(""), title: "Limpiar b\xFAsqueda" }, h(XSvg, { s: 14 }))), usaSecciones && !isSearching && h("div", { className: "nav-tabs" }, secciones.map((c) => h("button", { key: c.key, className: `nav-tab ${activeCat === c.key ? "active" : ""}`, onClick: () => scrollToCat(c.key) }, c.label))))), catalogoState === "loading" ? h("div", { className: "empty-state" }, h("p", null, "Cargando lista de precios\u2026")) : catalogoState === "error" ? h("div", { className: "empty-state" }, h("p", null, "No se pudo cargar la lista de precios."), h("span", { style: { fontSize: 13, color: "#9ca3af" } }, "Revisa tu conexi\xF3n y vuelve a intentar.")) : isSearching ? h(React.Fragment, null, h("div", { className: "results-info" }, searchResults.length, " resultado", searchResults.length !== 1 ? "s" : "", ' para "', searchQuery, '"'), searchResults.length > 0 ? (vistaCat ? h("div", { className: "filas" }, searchResults.map((p) => h(FilaCatalogo, { key: p.id, p, etiqueta: p.lista === activeLista ? p.catRaw + (p.sub ? " \xB7 " + p.sub : "") : "", externo: p.lista !== activeLista, listaNombre: etiquetaLista(p.lista), onOpen: openProduct, imageOverrides: overrides }))) : h("div", { className: "grid" }, searchResults.map(renderTile))) : h("div", { className: "empty-state" }, h("p", null, 'No se encontr\xF3 "', searchQuery, '"'), h("span", { style: { fontSize: 13, color: "#9ca3af" } }, "Prueba con otro nombre o el c\xF3digo del producto."))) : vistaCat ? (vistaCat.secciones.length === 0 ? h("div", { className: "empty-state" }, h("p", null, "Esta lista no tiene productos vigentes.")) : h("div", { className: "cat-wrap" }, vistaCat.secciones.filter((x) => activeCat === TODAS_KEY || x.chip === activeCat).map((x) => h(SeccionCatalogo, { key: x.key, s: x, conFamilia: activeCat === TODAS_KEY, etiquetaLista, onOpen: openProduct, imageOverrides: overrides })))) : !usaSecciones ? productosLista.length === 0 ? h("div", { className: "empty-state" }, h("p", null, "Esta lista no tiene productos vigentes.")) : h("div", { className: "grid" }, productosLista.map(renderTile)) : (() => {
+      const sec = secciones.find((s) => s.key === activeCat) || secciones[0];
+      return h(React.Fragment, null, h("div", { className: "cat-header" }, h("span", { className: "cat-dot", style: { background: sec.color } }), h("h2", null, sec.label), h("span", { className: "cat-count" }, sec.products.length)), h("div", { className: "grid" }, sec.products.map(renderTile)));
+    })()), promosOpen && h(ComparadorPromos, { listas, productos: catalogo.productos, piezas: catalogo.piezas, onClose: () => setPromosOpen(false), onIr: (p) => {
+      setPromosOpen(false);
+      setSimOpen(false);
+      closeSearch();
+      setActiveLista(p.lista);
+      setActiveCat(TODAS_KEY);
+      openProduct(p.id);
+    } }), simOpen && listaActual && h(SimuladorPuntos, { lista: listaActual, productos: productosLista, bono: bonoActivoLista.porcentaje || 0, onClose: () => setSimOpen(false) }), selectedProduct && h(ProductModal, { key: selectedProduct.id, product: selectedProduct, bonoInfo: bonoDe(selectedProduct.lista), cartQty: 0, imageOverrides: overrides, videoLinks: videos, metas: adminConfig.metas, reglasLista: listas.find((l) => l.key === selectedProduct.lista) || null, notaGrupo: notaDe(selectedProduct), textoVideo: ((adminConfig.mensajes && adminConfig.mensajes[selectedProduct.codigo]) || (adminConfig.textos && adminConfig.textos.videoWhatsapp) || TEXTO_VIDEO_DEFAULT).replace(/\{producto\}/g, selectedProduct.name), onAdd: () => {
+    }, onSub: () => {
+    }, onRemove: () => {
+    }, onViewCart: () => {
+    }, onClose: () => setSelectedId(null) }), h(AdminPanel, { open: adminOpen, config: adminConfig, setConfig: (u) => {
+      adminTouched.current = true;
+      setAdminConfig(u);
+    }, saveState, sbReady, productos: catalogoTodo.productos, listas: catalogoTodo.listas, onSaveNow: saveNow, onClose: () => {
+      setAdminOpen(false);
+      try {
+        if (/admin/i.test(location.pathname + location.hash)) history.replaceState(null, "", "/");
+      } catch (e) {
+      }
+    } }));
   }
   var root = ReactDOM.createRoot(document.getElementById("root"));
   root.render(h(App, null));

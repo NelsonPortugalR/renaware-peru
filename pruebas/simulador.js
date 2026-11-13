@@ -23,7 +23,7 @@ const CLAVE_ADMIN = "clave-de-prueba";
 /* supabase-js de mentira: lo justo que usa la página. Las funciones que cambian algo exigen sesión de admin. */
 const SB_FALSO = `
 window.supabase = { createClient: function () {
-  var M = window.__MOCK, S = window.__SIM = window.__SIM || { rpc: [], subidas: [], config: null, sesiones: { "tok-asesor": 1 }, admin: {} };
+  var M = window.__MOCK, S = window.__SIM = window.__SIM || { rpc: [], subidas: [], config: null, sesiones: { "tok-asesor": { nombre: "Nelson", celular: "987654321", completa: M.completa !== false } }, admin: {} };
   function R(d) { return Promise.resolve({ data: d, error: null }); }
   function E(m) { return Promise.resolve({ data: null, error: { message: m } }); }
   function esAdmin(t) { return !!(t && S.admin[t]); }
@@ -32,8 +32,8 @@ window.supabase = { createClient: function () {
       return R(t === "site_config" ? { data: S.config || M.config } : null); } }; } }; } }; },
     rpc: function (n, a) {
       a = a || {}; S.rpc.push([n, a]);
-      if (n === "asesor_sesion_valida") return R(S.sesiones[a.p_token] ? { ok: true, nombre: "Nelson", celular: "987654321" } : { ok: false });
-      if (n === "asesor_login") { if (String(a.p_celular) !== "987654321") return E("Ese celular no esta habilitado"); S.sesiones["tok-asesor"] = 1; return R({ token: "tok-asesor", nombre: "Nelson", celular: "987654321" }); }
+      if (n === "asesor_sesion_valida") return R(S.sesiones[a.p_token] ? Object.assign({ ok: true }, S.sesiones[a.p_token]) : { ok: false });
+      if (n === "asesor_login") { var quien = { "987654321": { nombre: "Nelson", celular: "987654321", completa: true }, "912345678": { nombre: "Rosa", celular: "912345678", completa: false } }[String(a.p_celular)]; if (!quien) return E("Ese celular no esta habilitado"); S.sesiones["tok-asesor"] = quien; return R(Object.assign({ token: "tok-asesor" }, quien)); }
       if (n === "registrar_evento") return R(true);
       if (n === "admin_login") { if (a.p_clave !== "${CLAVE_ADMIN}") return E("Clave incorrecta"); S.admin["tok-admin"] = 1; return R("tok-admin"); }
       if (n === "guardar_config_tok") { if (!esAdmin(a.p_token)) return E("Sesion invalida"); S.config = a.p_data || S.config; return R(true); }

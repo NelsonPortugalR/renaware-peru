@@ -65,7 +65,10 @@ async function ingreso() {
   await p.locator(".login-btn").click();
   await p.waitForSelector(".lista-btn");
   await p.waitForTimeout(300);
-  igual(await s.textos(".lista-btn"), ["Tienda en Línea", "Lista General", "Compartir", "Repuestos", "Servicios"], "las cinco listas, con Servicios al final");
+  igual(await s.textos(".lista-btn .lista-nom"), ["Tienda en Línea", "Lista General", "Compartir", "Repuestos", "Servicios"], "con vista completa, las cinco listas, con Servicios al final");
+  igual(await s.textos(".lista-btn.esp .lista-nom"), ["Compartir"], "solo el especial va resaltado");
+  igual(await s.texto(".lista-btn.esp .lista-esp"), "Especial hasta 11 nov", "y dice que es especial y hasta cuándo");
+  ok(await s.cuenta(".accion-btn") === 2, "con Simulador de puntos y Buscador maestro");
   const pedidos = Array.from(new Set(s.registro.pedidos)).sort();
   igual(pedidos, ["cot_grupos", "cot_servicios", "factores_credito", "piezas", "productos", "reglas_credito", "v_listas_vigentes"], "lee solo catálogos");
   await s.fin("ingreso");
@@ -406,11 +409,39 @@ async function admin() {
   await s.fin("admin");
 }
 
+/* ------------------------------------------------------------------ 1b. lo que ve un asesor */
+async function vistaAsesor() {
+  titulo("Lo que ve un asesor");
+  const s = await sesion({ movil: true, sinSesion: true, cambiar: sinBono });
+  const p = s.pagina;
+  ok(await s.cuenta(".login-lado h2") === 1 && await s.cuenta(".login-rot") === 1, "la pantalla de ingreso trae su título y el rótulo del campo");
+  const caja = (await s.cajas(".login-box"))[0], boton = (await s.cajas(".login-btn"))[0];
+  ok(boton.aba <= 844 && caja.x === 0 && caja.der === 390, "en el celular el botón Entrar queda a la vista sin bajar → " + JSON.stringify(boton));
+  await p.locator(".login-input").fill("912345678");
+  await p.locator(".login-btn").click();
+  await p.waitForSelector(".lista-btn");
+  await p.waitForTimeout(300);
+  igual(await s.textos(".lista-btn .lista-nom"), ["Lista General", "Compartir", "Repuestos", "Servicios"], "Lista General, los especiales, Repuestos y Servicios; sin Tienda en Línea");
+  ok(await s.cuenta(".accion-btn") === 0, "sin Simulador de puntos ni Buscador maestro");
+  ok(/\bon\b/.test(await p.locator(".lista-btn", { hasText: "Lista General" }).getAttribute("class")), "entra en la Lista General");
+  await s.lista("Compartir");
+  ok(/esp on/.test(await p.locator(".lista-btn", { hasText: "Compartir" }).getAttribute("class")) && await s.cuenta(".tile") > 0, "abre el especial y muestra sus fichas");
+  await s.lista("Repuestos");
+  ok(await s.cuenta(".accion-btn") === 0 && await s.cuenta(".fila") > 0, "Repuestos se ve igual, sin los botones de la vista completa");
+  await s.fin("asesor que entra con su celular");
+  const b = await sesion({ movil: true, cambiar: (m) => { sinBono(m); m.completa = false; } });
+  igual(await b.textos(".lista-btn .lista-nom"), ["Lista General", "Compartir", "Repuestos", "Servicios"], "y ve lo mismo al volver con la sesión guardada");
+  ok(await b.cuenta(".accion-btn") === 0, "sin los botones de la vista completa");
+  const c4 = await b.cajas(".lista-btn");
+  ok(c4[0].y === c4[1].y && c4[2].y === c4[3].y && c4[2].y > c4[0].y && c4[0].h === c4[1].h, "cuatro listas: dos y dos, parejas en cada fila");
+  await b.fin("asesor con sesión guardada");
+}
+
 /* ------------------------------------------------------------------ 7. si faltan las tablas nuevas, el portal sigue */
 async function respaldo() {
   titulo("Si la base no trae lo nuevo");
   const a = await sesion({ movil: true, cambiar: (m) => { sinBono(m); delete m.servicios; delete m.grupos; } });
-  igual(await a.textos(".lista-btn"), ["Tienda en Línea", "Lista General", "Compartir", "Repuestos"], "sin cot_servicios no hay pestaña Servicios");
+  igual(await a.textos(".lista-btn .lista-nom"), ["Tienda en Línea", "Lista General", "Compartir", "Repuestos"], "sin cot_servicios no hay pestaña Servicios");
   await a.lista("Repuestos");
   ok(await a.cuenta(".tile") === 73 && await a.cuenta(".fila") === 0, "y sin cot_grupos Repuestos se ve en fichas, como antes");
   const b4 = await a.cajas(".lista-btn");
@@ -425,7 +456,7 @@ async function respaldo() {
 
 (async () => {
   const solo = process.env.SOLO || "";
-  const todas = { ingreso, ganancia, repuestos, servicios, parteAlta, admin, respaldo };
+  const todas = { ingreso, vistaAsesor, ganancia, repuestos, servicios, parteAlta, admin, respaldo };
   for (const [n, fn] of Object.entries(todas)) {
     if (solo && solo.split(",").indexOf(n) < 0) continue;
     try { await fn(); } catch (e) { fallan++; console.log("  ✗ " + n + " se cayó: " + String(e.message || e).split("\n")[0]); }
