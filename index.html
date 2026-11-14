@@ -97,8 +97,10 @@
     };
   };
   var sesionTok = "";
+  var enTour = false;   // mientras corre el tutorial, las listas y fichas que abre el recorrido no cuentan como uso
   var rastrear = (tipo, detalle) => {
     if (!sb || !sesionTok) return;
+    if (enTour && tipo !== "tutorial" && tipo !== "latido") return;
     // supabase-js arma la llamada pero solo la envía cuando alguien la espera: sin el then no salía ningún evento
     try { sb.rpc("registrar_evento", { p_token: sesionTok, p_tipo: tipo, p_detalle: detalle || {} }).then(() => {}, () => {}); } catch (e) {}
   };
@@ -934,7 +936,7 @@
     const src = imgSrc(p, imageOverrides);
     const abrir = () => onOpen(p.id);
     const pie = p.esServicio ? "" : "C\xF3d. " + p.codigo;
-    return h("div", { className: "fila", role: "button", tabIndex: 0, onClick: abrir, onKeyDown: alTeclado(abrir) },
+    return h("div", { className: "fila", role: "button", tabIndex: 0, "data-pid": p.id, onClick: abrir, onKeyDown: alTeclado(abrir) },
       !sinFoto && h("div", { className: "fila-img" }, h(LazyImage, { key: src, src, alt: "", codigo: p.codigo })),
       h("div", { className: "fila-txt" },
         etiqueta && h("span", { className: "fila-eti" }, etiqueta),
@@ -2845,7 +2847,7 @@
       rastrear("sesion_fin", {});
       guardarTok(SESION_KEY, "");
       sesionTok = "";
-      setCuentaOpen(false); setTour(null); setSelectedId(null); setSimOpen(false); setPromosOpen(false);
+      enTour = false; setCuentaOpen(false); setTour(null); setSelectedId(null); setSimOpen(false); setPromosOpen(false);
       setCart([]); setSearchQuery(""); setActiveLista("general"); setActiveCat(TODAS_KEY);
       setSesion(null);
       try { window.scrollTo(0, 0); } catch (e) {}
@@ -3068,30 +3070,45 @@
     useEffect(() => { if (sesion && activeLista) rastrear("ver_lista", { lista: activeLista }); }, [activeLista, sesion]);
     const bonoActivoLista = bonoDe(activeLista);
     const renderTile = (p) => h(ProductTile, { key: p.id, product: p, cartQty: cartQtyOf(p.id), onOpen: openProduct, imageOverrides: overrides });
-    // ---- Recorrido guiado: los pasos se arman al empezar, con un producto de la Lista General que tenga video y crédito
+    // ---- Recorrido guiado: los pasos se arman al empezar. Recorre un producto de la Lista General con video y crédito,
+    // una promoción vigente, un repuesto y los servicios.
     const armarTour = () => {
-      const gen = listas.some((l) => l.key === "general") ? "general" : (listas[0] || {}).key;
-      const lg = listas.find((l) => l.key === gen) || {};
-      const nombreGen = lg.labelCorto || lg.label || "Lista General";
-      const enGen = catalogo.productos.filter((p) => p.lista === gen && !p.esCat).sort((a, b) => (a.orden || 0) - (b.orden || 0));
+      const deLista = (k) => listas.find((l) => l.key === k) || null;
+      const gen = deLista("general") ? "general" : (listas[0] || {}).key;
+      const nombreDe = (k) => { const l = deLista(k) || {}; return l.labelCorto || l.label || k; };
+      const porOrden = (a, b) => (a.orden || 0) - (b.orden || 0);
+      const productosDe = (k) => catalogo.productos.filter((p) => p.lista === k && !p.esCat).sort(porOrden);
       const conVideo = (p) => !!videoEmbed(videoSrc(p, adminConfig.videos));
       const aCredito = (p) => !Finanzas.esSoloContado(p.cashPrice) && Finanzas.eligeCredito(p.cashPrice);
+      const enGen = productosDe(gen);
       const demo = enGen.find((p) => conVideo(p) && aCredito(p)) || enGen.find(aCredito) || enGen[0] || null;
-      const mosaico = demo ? '.tile[data-pid="' + (window.CSS && CSS.escape ? CSS.escape(String(demo.id)) : String(demo.id)) + '"]' : "";
-      const alInicio = async () => {
-        setSelectedId(null); setSimOpen(false); setPromosOpen(false); setCartOpen(false); setCuentaOpen(false); setSearchQuery("");
-        setActiveLista(gen); setActiveCat(TODAS_KEY);
+      // la promoción: la lista especial vigente que dura más (Navidad antes que una que ya cierra) y su primer especial
+      const promo = listas.filter((l) => l.especial && productosDe(l.key).length).sort((a, b) => String(b.hasta || "9999").localeCompare(String(a.hasta || "9999")))[0] || null;
+      const promoProd = promo ? productosDe(promo.key)[0] : null;
+      const rep = deLista("repuestos"), serv = deLista("servicios");
+      const pid = (p) => '[data-pid="' + (window.CSS && CSS.escape ? CSS.escape(String(p.id)) : String(p.id)) + '"]';
+      const formas = (l) => { const f = ["al contado"]; if (!l || l.credito !== false) f.push("en cuotas"); if (!l || l.autocompra !== false) f.push("con autocompra"); return f.length > 1 ? f.slice(0, -1).join(", ") + " y " + f[f.length - 1] : f[0]; };
+      let abierta = null, repId = null;
+      const irA = async (k) => {
+        setSelectedId(null); abierta = null;
+        setSimOpen(false); setPromosOpen(false); setCartOpen(false); setCuentaOpen(false); setSearchQuery("");
+        setActiveLista(k); setActiveCat(TODAS_KEY);
         await pausa(90);
         try { window.scrollTo(0, 0); } catch (e) {}
         await pausa(90);
       };
-      const conFicha = async () => {
-        if (!demo || document.querySelector(".modal-box")) return;
-        setSelectedId(demo.id);
+      const alInicio = () => irA(gen);
+      const abrirFicha = async (p) => {
+        if (!p) return;
+        if (abierta === p.id && document.querySelector(".modal-box")) return;
+        if (document.querySelector(".modal-box")) { setSelectedId(null); await pausa(80); }
+        setSelectedId(p.id); abierta = p.id;
         await esperarEl(".modal-box", 2500);
         await pausa(320);
       };
+      const conFicha = () => abrirFicha(demo);
       const enCliente = async (pestana) => { await conFicha(); await tocar(".modal-box .mode-tab", 0); await tocar(".modal-box .tab-bar .tab-btn", pestana); };
+      const enAuto = async () => { await conFicha(); await tocar(".modal-box .tab-bar .tab-btn", 0); await tocar(".modal-box .mode-tab", 1); };
       // Sube la inicial de verdad (como si la escribiera la asesora) y anota cómo cambió la cuota del plazo elegido
       const subirInicial = async () => {
         await enCliente(1);
@@ -3116,31 +3133,64 @@
         const a = cuota(m);
         return m && de && a && de !== a ? { inicial: formatMoney(meta), meses: parseInt(m, 10), de, a } : null;
       };
+      // Marca una fila del catálogo para resaltarla: en Repuestos la primera propia de la lista; en Servicios la primera
+      const marcar = async (marca, cual) => {
+        await esperarEl(".filas .fila", 2500);
+        document.querySelectorAll('[data-tour="' + marca + '"]').forEach((x) => x.removeAttribute("data-tour"));
+        const f = cual();
+        if (f) f.setAttribute("data-tour", marca);
+        return f;
+      };
+      const irRepuestos = async () => {
+        await irA(rep.key);
+        const f = await marcar("repuesto", () => Array.from(document.querySelectorAll(".filas .fila[data-pid]")).find((x) => seVe(x) && !x.querySelector(".fila-ext")));
+        repId = f ? f.getAttribute("data-pid") : null;
+      };
+      const irServicios = async () => {
+        await irA(serv.key);
+        await marcar("servicio", () => { const s = document.querySelector(".cat-sec"); return s ? s.querySelector(".filas .fila") : null; });
+        const secs = Array.from(document.querySelectorAll(".cat-sec-tit h2")).map((x) => x.textContent.trim()).filter(Boolean).map((x, i) => x.charAt(0).toLowerCase() + x.slice(1));
+        return { secs: secs.length > 1 ? secs.slice(0, -1).join(", ") + " y " + secs[secs.length - 1] : secs[0] || "" };
+      };
       return [
         { titulo: "¡Hola! Te mostramos el portal", antes: alInicio,
-          texto: "En un minuto verás lo principal: las listas, cómo buscar, ver las cuotas, subir la inicial, la autocompra y los videos." },
+          texto: "En un par de minutos verás lo principal: las listas, las cuotas, la inicial, la autocompra, los videos, las promociones, los repuestos y los servicios." },
         { titulo: "Elige la lista", sel: [".lista-switch"], antes: alInicio,
-          texto: "Toca una lista para ver sus precios. «" + nombreGen + "» tiene todos los productos." + (listas.some((l) => l.especial) ? " Las de color naranja son especiales y dicen hasta qué día valen." : "") },
+          texto: "Toca una lista para ver sus precios. «" + nombreDe(gen) + "» tiene todos los productos." + (promo ? " Las de color naranja son especiales y dicen hasta qué día valen." : "") },
         { titulo: "Busca un producto", sel: [".search-bar", ".nav-tabs"], antes: alInicio,
           texto: "Escribe el nombre, el código o el número del producto. Con los botones de abajo ves solo un tipo de producto." },
-        demo && { titulo: "Abre un producto", sel: [mosaico], antes: alInicio,
+        demo && { titulo: "Abre un producto", sel: [".tile" + pid(demo)], antes: alInicio,
           texto: "Toca la foto o «Ver precio». Abramos este para ver todo lo que trae." },
         demo && { titulo: "Muestra el video", sel: [".modal-box .modal-img"], requiere: ".modal-box .play-overlay", antes: conFicha,
           texto: "Toca «Ver video» para enseñárselo a tu cliente en ese momento. Con «Enviar video» se lo mandas por WhatsApp." },
         demo && { titulo: "Precio para tu cliente", sel: [".modal-box .mode-tabs", ".modal-box .price-block"], requiere: ".modal-box .price-block", antes: () => enCliente(0),
           texto: "En «Precio Cliente» ves lo que paga tu cliente. Este es el precio al contado." },
-        demo && { titulo: "Tus puntos y tu ganancia", sel: [".modal-box .points-note", ".modal-box .gan"], antes: () => enCliente(0),
-          texto: "Aquí ves los puntos que te da la venta. Toca «Cuánto gano con esta venta» para ver el detalle de tu ganancia." },
+        demo && { titulo: "Los puntos de la venta", sel: [".modal-box .points-note", ".modal-box .gan"], antes: () => enCliente(0),
+          texto: "Con el precio de cliente ves también los puntos que te da la venta, con el puntaje extra si está vigente. En «Cuánto gano con esta venta» está tu ganancia." },
         demo && { titulo: "Mira las cuotas", sel: [".modal-box .tab-bar", ".modal-box .installments-grid"], requiere: ".modal-box .installments-grid", antes: () => enCliente(1),
           texto: "Toca «Crédito» para ver las cuotas. Cada botón es un plazo: los meses y cuánto se paga al mes." },
         demo && { titulo: "Sube la inicial", sel: [".modal-box .tab-content .cbox.editable", ".modal-box .installments-grid"], requiere: ".modal-box .installments-grid", antes: subirInicial,
           texto: (d) => d ? "Toca el monto de la inicial y escribe lo que da tu cliente. Mira: con " + d.inicial + " de inicial, la cuota de " + d.meses + " meses baja de " + d.de + " a " + d.a + "."
             : "Toca el monto de la inicial y escribe lo que da tu cliente: mientras más inicial, más baja la cuota." },
-        demo && { titulo: "Autocompra", sel: [".modal-box .mode-tabs", ".modal-box .auto-ticket"], requiere: ".modal-box .auto-ticket",
-          antes: async () => { await enCliente(0); await tocar(".modal-box .mode-tab", 1); },
-          texto: "Si el producto es para ti, toca «Precio Autocompra»: ves tu precio ya con tu descuento. También tiene contado y crédito." },
+        demo && { titulo: "Autocompra", sel: [".modal-box .mode-tabs", ".modal-box .auto-ticket"], requiere: ".modal-box .auto-ticket", antes: enAuto,
+          texto: "Si el producto es para ti o para uno de tus afiliados, toca «Precio Autocompra»: ves el precio ya con el descuento. También tiene contado y crédito." },
+        demo && { titulo: "Puntos y Empiece Ya", sel: [".modal-box .incentives", ".modal-box .gan.equipo"], requiere: ".modal-box .incentives",
+          antes: async () => { await enAuto(); return { meta: !!document.querySelector(".modal-box .inc-level"), equipo: !!document.querySelector(".modal-box .gan.equipo") }; },
+          texto: (d) => "Aquí ves los puntos de la autocompra." + (!d || d.meta ? " En tus primeras 4 semanas (Empiece Ya), te dice qué premio ganas y cuántos puntos y afiliados te faltan." : "") + (d && d.equipo ? " Abajo, lo que ganas tú si compra tu afiliado." : "") },
         demo && { titulo: "Comparte la cotización", sel: [".modal-box .share-quote-btn"], antes: async () => { await conFicha(); await tocar(".modal-box .mode-tab", 0); },
           texto: "Arma una imagen con el precio, la inicial o las cuotas que elegiste, lista para mandar a tu cliente por WhatsApp." },
+        promoProd && { titulo: "Las promociones", sel: [".tile" + pid(promoProd)], antes: () => irA(promo.key),
+          texto: "Las promociones vigentes tienen su lista, en naranja: «" + nombreDe(promo.key) + "»" + (promo.hasta ? ", hasta el " + diaMesCorto(promo.hasta) : "") + ". Cada especial trae sus productos y su regalo." },
+        promoProd && { titulo: "Una promoción por dentro", sel: [".modal-box .gift-row", ".modal-box .mode-tabs", ".modal-box .price-block"], requiere: ".modal-box .price-block",
+          antes: async () => { if (abierta !== promoProd.id) await irA(promo.key); await abrirFicha(promoProd); await tocar(".modal-box .mode-tab", 0); await tocar(".modal-box .tab-bar .tab-btn", 0); return { regalo: !!document.querySelector(".modal-box .gift-row") }; },
+          texto: (d) => (d && d.regalo ? "Su ficha dice el regalo, y se" : "Se") + " cotiza igual que la Lista General: " + formas(promo) + "." },
+        rep && { titulo: "Repuestos", sel: ['[data-tour="repuesto"]'], antes: irRepuestos,
+          texto: "En «" + nombreDe(rep.key) + "» cada pieza trae su código y el precio al cliente a la vista. Arriba filtras por equipo; toca una pieza para ver su ficha." },
+        rep && { titulo: "Tu precio en un repuesto", sel: [".modal-box .mode-tabs", ".modal-box .auto-ticket"], requiere: ".modal-box .auto-ticket",
+          antes: async () => { if (!repId || !document.querySelector('[data-tour="repuesto"]')) await irRepuestos(); if (repId) { await abrirFicha({ id: repId }); await tocar(".modal-box .mode-tab", 1); } },
+          texto: "En «Precio Asesor» ves tu precio y lo que ganas con esa pieza. Los repuestos y los servicios se pagan al contado." },
+        serv && { titulo: "Servicios", sel: [".cat-sec-head", '[data-tour="servicio"]'], requiere: '[data-tour="servicio"]', antes: irServicios,
+          texto: (d) => "En «" + nombreDe(serv.key) + "» están " + (d && d.secs ? d.secs : "los trabajos del taller") + ", con el precio al cliente. Toca uno y en «Precio Asesor» ves tu ganancia, igual que en los repuestos." },
         { titulo: "¡Listo!", sel: [".tour-ver"], antes: alInicio,
           texto: "Cuando quieras repasarlo, toca «Ver tutorial» aquí arriba. También está en el botón de tu cuenta, arriba a la derecha." }
       ].filter(Boolean);
@@ -3149,10 +3199,12 @@
       setCuentaOpen(false);
       guardarTok(TOUR_KEY, "1");   // sale solo la primera vez; después, desde «Ver tutorial»
       rastrear("tutorial", { accion: "inicio", origen });
+      enTour = true;
       setTour({ n: Date.now(), origen, desde: origen === "primera vez" ? 0 : 1, pasos: armarTour() });
     };
     const terminarTour = (accion, paso, total) => {
       rastrear("tutorial", { accion, paso: paso + 1, de: total, origen: tour ? tour.origen : "" });
+      enTour = false;
       setTour(null);
       setSelectedId(null);
       setSearchQuery("");

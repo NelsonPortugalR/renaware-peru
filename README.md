@@ -51,14 +51,18 @@ validan la sesión.
 
 ## Tutorial
 
-La primera vez que alguien entra en un equipo arranca solo un recorrido de 12
+La primera vez que alguien entra en un equipo arranca solo un recorrido de 18
 pasos: listas, buscador, abrir un producto, video, precio al contado, puntos y
 ganancia, cuotas, subir la inicial (la sube de verdad y dice cuánto baja la
-cuota), autocompra y compartir la cotización. Se puede saltar en cualquier paso
+cuota), autocompra (para ti o para un afiliado), sus puntos y el Empiece Ya,
+compartir la cotización, una promoción vigente, un repuesto (con su precio de
+asesor) y los servicios. Lo que abre el recorrido no cuenta como uso. Se puede saltar en cualquier paso
 y se vuelve a ver con «Ver tutorial» (arriba, junto a la fecha de la lista, y en
 el menú de la cuenta). Que ya salió se guarda en el navegador (`rw_tour_v1`): en
 otro celular sale otra vez. Usa un producto de la Lista General que tenga video
-y crédito; si una parte no está (un producto sin video), ese paso se salta.
+y crédito, el primer especial de la promoción que dura más y la primera pieza
+propia de Repuestos; si una parte no está (un producto sin video), ese paso
+se salta.
 
 Las fotos tienen dos caminos y gana el primero que exista:
 
