@@ -4,8 +4,8 @@
    rechaza y hace fallar la prueba.
    Recorre: ingreso, listas, puntos y ganancia, Repuestos como catálogo,
    Servicios (soldadura, limpieza, pulido en dos variantes, cocina), fichas,
-   cotización, buscador, panel de administración y el comportamiento de la
-   parte alta (listas, barra pegada, salto al buscar).
+   cotización, buscador, panel de administración, el comportamiento de la
+   parte alta (listas, barra pegada, salto al buscar) y el tutorial.
    Uso:  node pruebas/prueba.js [carpeta-de-capturas]
    Los datos de datos.json tienen precios de asesor, puntos y valores
    comisionables inventados (el repositorio es público). */
@@ -479,9 +479,141 @@ async function respaldo() {
   await b.fin("sin grupos");
 }
 
+/* ------------------------------------------------------------------ 9. tutorial (recorrido guiado) */
+async function pasoTour(s, antes) {
+  const p = s.pagina;
+  await p.waitForFunction((n) => { const c = document.querySelector(".tour-card.listo"), a = document.querySelector(".tour-avance span"); return !!(c && a && a.textContent !== n); }, antes || "", { timeout: 9000 });
+  await p.waitForTimeout(450);   // que terminen de moverse el foco y la tarjeta
+  return p.evaluate(() => {
+    const caja = (el) => { if (!el) return null; const r = el.getBoundingClientRect(); return { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height), der: Math.round(r.right), aba: Math.round(r.bottom) }; };
+    const q = (x) => document.querySelector(x);
+    return { n: q(".tour-avance span").textContent, titulo: q(".tour-tit").textContent, texto: q(".tour-txt").textContent,
+      foco: caja(q(".tour-foco")), carta: caja(q(".tour-card")), botones: Array.from(document.querySelectorAll(".tour-botones button")).map((b) => b.textContent),
+      vw: innerWidth, vh: innerHeight };
+  });
+}
+const dentroDe = (a, b, tol) => !!(a && b) && a.x >= b.x - tol && a.y >= b.y - tol && a.der <= b.der + tol && a.aba <= b.aba + tol;
+const noSeTapan = (a, b) => a.aba <= b.y + 1 || b.aba <= a.y + 1 || a.der <= b.x + 1 || b.der <= a.x + 1;
+const enPantalla = (c, t) => c.x >= 0 && c.y >= 0 && c.der <= t.vw && c.aba <= t.vh;
+async function tutorial() {
+  titulo("Tutorial: la primera vez (celular)");
+  const s = await sesion({ movil: true, tour: true, cambiar: sinBono });
+  const p = s.pagina;
+  const sig = async (t) => { await p.locator(".tour-sig").click(); return pasoTour(s, t.n); };
+  const revisar = async (t, sel, msg) => {
+    const c = (await s.cajas(sel))[0];
+    ok(dentroDe(c, t.foco, 3), t.titulo + ": " + msg + " → foco " + JSON.stringify(t.foco) + ", parte " + JSON.stringify(c));
+    ok(noSeTapan(t.foco, t.carta), t.titulo + ": la tarjeta no tapa lo que explica");
+    ok(enPantalla(t.carta, t), t.titulo + ": la tarjeta entra entera en la pantalla");
+  };
+  let t = await pasoTour(s, "");
+  ok(/Hola/.test(t.titulo) && t.n === "1 de 12", "la primera vez arranca solo, con un saludo → " + t.titulo + " · " + t.n);
+  igual(t.botones, ["Saltar tutorial", "Empezar"], "y se puede saltar desde el inicio");
+  igual(await p.evaluate(() => localStorage.getItem("rw_tour_v1")), "1", "queda anotado en este equipo que ya salió");
+  await s.foto("tutorial-0-saludo");
+  t = await sig(t);
+  await revisar(t, ".lista-switch", "resalta el menú de listas");
+  ok(/naranja/.test(t.texto), "explica que las naranjas son especiales");
+  igual(t.botones, ["Saltar", "Atrás", "Siguiente"], "con Saltar, Atrás y Siguiente");
+  await s.foto("tutorial-1-listas");
+  t = await sig(t);
+  await revisar(t, ".search-bar", "resalta el buscador");
+  t = await sig(t);
+  const nombre = await p.evaluate(() => { const f = document.querySelector(".tour-foco").getBoundingClientRect(); const el = Array.from(document.querySelectorAll(".tile")).find((x) => { const r = x.getBoundingClientRect(); return r.top >= f.top - 3 && r.bottom <= f.bottom + 3 && r.left >= f.left - 3 && r.right <= f.right + 3; }); return el ? el.querySelector(".tile-name").textContent : ""; });
+  ok(t.titulo === "Abre un producto" && !!nombre, "resalta un producto de la lista → " + nombre);
+  ok(noSeTapan(t.foco, t.carta) && enPantalla(t.carta, t), "Abre un producto: la tarjeta no lo tapa");
+  await s.foto("tutorial-3-producto");
+  t = await sig(t);
+  igual(await s.texto(".modal-box .pcard-name"), nombre, "abre la ficha de ese mismo producto");
+  await revisar(t, ".modal-box .play-overlay", "muestra el botón del video");
+  ok(dentroDe((await s.cajas(".modal-box .vid-wa"))[0], t.foco, 3), "y el de enviarlo por WhatsApp");
+  await s.foto("tutorial-4-video");
+  t = await sig(t);
+  await revisar(t, ".modal-box .price-block", "resalta el precio al contado");
+  igual(await s.texto(".modal-box .mode-tab.on"), "Precio Cliente", "en Precio Cliente");
+  t = await sig(t);
+  await revisar(t, ".modal-box .points-note", "resalta los puntos");
+  ok(dentroDe((await s.cajas(".modal-box .gan"))[0], t.foco, 3), "y cuánto gana");
+  t = await sig(t);
+  await revisar(t, ".modal-box .installments-grid", "resalta las cuotas");
+  igual(await s.texto(".modal-box .tab-btn.on"), "Crédito", "con Crédito tocado");
+  await p.locator(".tour-atras").click(); t = await pasoTour(s, t.n);
+  igual(t.titulo, "Tus puntos y tu ganancia", "Atrás vuelve al paso anterior");
+  t = await sig(t);
+  igual(t.titulo, "Mira las cuotas", "y Siguiente vuelve a avanzar");
+  t = await sig(t);
+  await revisar(t, ".modal-box .cbox.editable", "resalta la inicial");
+  const m = /con (S\/\s?[\d,.]+) de inicial, la cuota de (\d+) meses baja de (S\/\s?[\d,.]+) a (S\/\s?[\d,.]+)/.exec(t.texto);
+  ok(!!m && num(m[4]) < num(m[3]), "sube la inicial y muestra cuánto baja la cuota → " + t.texto);
+  if (m) {
+    igual(num(await p.locator(".modal-box .cbox.editable input").inputValue()), num(m[1]), "la inicial de la ficha es la que dice la tarjeta");
+    const cuota = await p.evaluate((meses) => { const b = Array.from(document.querySelectorAll(".modal-box .inst-btn")).find((x) => x.querySelector(".inst-m").textContent === meses + "m"); return b ? b.querySelector(".inst-v").textContent : ""; }, m[2]);
+    igual(num(cuota), num(m[4]), "y la cuota nueva es la que se ve en la ficha");
+  }
+  await s.foto("tutorial-8-inicial");
+  t = await sig(t);
+  await revisar(t, ".modal-box .auto-ticket", "resalta el precio de autocompra");
+  igual(await s.texto(".modal-box .mode-tab.on"), "Precio Autocompra", "con Precio Autocompra tocado");
+  await s.foto("tutorial-9-autocompra");
+  t = await sig(t);
+  await revisar(t, ".modal-box .share-quote-btn", "resalta Compartir cotización");
+  ok(t.carta.aba <= t.foco.y, "la tarjeta va encima del botón, que está abajo");
+  t = await sig(t);
+  igual(await s.cuenta(".modal-box"), 0, "al final cierra la ficha");
+  await revisar(t, ".tour-ver", "y señala «Ver tutorial»");
+  igual([t.n, t.botones], ["12 de 12", ["Atrás", "Terminar"]], "son doce pasos y el último se cierra con Terminar");
+  await s.foto("tutorial-11-listo");
+  await p.locator(".tour-sig").click(); await p.waitForTimeout(300);
+  igual(await s.cuenta(".tour"), 0, "Terminar cierra el tutorial");
+  igual((await s.rpc("registrar_evento")).filter((x) => x.p_tipo === "tutorial").map((x) => x.p_detalle.accion), ["inicio", "fin"], "queda registrado que lo vio entero");
+  await p.reload(); await p.waitForSelector(".lista-btn"); await p.waitForTimeout(1500);
+  igual(await s.cuenta(".tour"), 0, "la segunda vez ya no sale solo");
+  igual(await s.textos(".nav-top .tour-ver"), ["Ver tutorial"], "pero «Ver tutorial» está a la vista arriba");
+  await p.locator(".nav-top .tour-ver").click();
+  t = await pasoTour(s, "");
+  igual(t.titulo, "Elige la lista", "y vuelve a empezar, sin el saludo");
+  await p.locator(".tour-saltar").click(); await p.waitForTimeout(300);
+  igual(await s.cuenta(".tour"), 0, "Saltar lo cierra en cualquier paso");
+  await p.locator(".header-cuenta").click(); await p.waitForTimeout(150);
+  await p.locator(".cuenta-tour").click();
+  t = await pasoTour(s, "");
+  ok(t.titulo === "Elige la lista" && await s.cuenta(".cuenta-menu") === 0, "también se abre desde el menú de la cuenta");
+  await p.keyboard.press("Escape"); await p.waitForTimeout(300);
+  igual(await s.cuenta(".tour"), 0, "y Esc lo cierra");
+  await s.fin("tutorial en el celular");
+
+  titulo("Tutorial en un celular chico (360 × 640)");
+  const c = await sesion({ movil: true, viewport: { width: 360, height: 640 }, tour: true, cambiar: sinBono });
+  let v = await pasoTour(c, "");
+  const malos = [];
+  for (let k = 0; k < 20; k++) {
+    if (!enPantalla(v.carta, v)) malos.push(v.titulo + " (se sale)");
+    if (v.foco && !noSeTapan(v.foco, v.carta)) malos.push(v.titulo + " (tapa)");
+    if (v.botones.indexOf("Terminar") >= 0) break;
+    await c.pagina.locator(".tour-sig").click(); v = await pasoTour(c, v.n);
+  }
+  igual(malos, [], "en todos los pasos la tarjeta entra y no tapa lo que explica");
+  await c.pagina.locator(".tour-sig").click(); await c.pagina.waitForTimeout(300);
+  await c.fin("tutorial en celular chico");
+
+  titulo("Tutorial en escritorio");
+  const d = await sesion({ viewport: { width: 1280, height: 860 }, tour: true, cambiar: sinBono });
+  const q = d.pagina;
+  let u = await pasoTour(d, "");
+  ok(enPantalla(u.carta, u) && Math.abs(u.carta.x + u.carta.w / 2 - 640) <= 2, "el saludo va al centro");
+  for (let k = 0; k < 4; k++) { await q.locator(".tour-sig").click(); u = await pasoTour(d, u.n); }
+  igual(u.titulo, "Muestra el video", "llega al video");
+  const modal = (await d.cajas(".modal-box"))[0];
+  ok(u.carta.x >= modal.der || u.carta.der <= modal.x, "en escritorio la tarjeta va al costado de la ficha, sin taparla");
+  await d.foto("tutorial-escritorio-video");
+  await q.locator(".tour-saltar").click(); await q.waitForTimeout(300);
+  igual([await d.cuenta(".tour"), await d.cuenta(".modal-box")], [0, 0], "Saltar cierra el tutorial y la ficha");
+  await d.fin("tutorial en escritorio");
+}
+
 (async () => {
   const solo = process.env.SOLO || "";
-  const todas = { ingreso, vistaAsesor, ganancia, repuestos, servicios, parteAlta, admin, respaldo };
+  const todas = { ingreso, vistaAsesor, ganancia, repuestos, servicios, parteAlta, admin, respaldo, tutorial };
   for (const [n, fn] of Object.entries(todas)) {
     if (solo && solo.split(",").indexOf(n) < 0) continue;
     try { await fn(); } catch (e) { fallan++; console.log("  ✗ " + n + " se cayó: " + String(e.message || e).split("\n")[0]); }

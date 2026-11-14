@@ -99,7 +99,8 @@
   var sesionTok = "";
   var rastrear = (tipo, detalle) => {
     if (!sb || !sesionTok) return;
-    try { sb.rpc("registrar_evento", { p_token: sesionTok, p_tipo: tipo, p_detalle: detalle || {} }); } catch (e) {}
+    // supabase-js arma la llamada pero solo la envía cuando alguien la espera: sin el then no salía ningún evento
+    try { sb.rpc("registrar_evento", { p_token: sesionTok, p_tipo: tipo, p_detalle: detalle || {} }).then(() => {}, () => {}); } catch (e) {}
   };
   var ADMIN_KEY = "rw_admin_config_v1";
   var CATALOG_CACHE_KEY = "rw_catalogo_v2";
@@ -1015,7 +1016,7 @@
     const src = imgSrc(product, imageOverrides);
     const [conFoto, setConFoto] = useState(false);
     useEffect(() => { setConFoto(false); }, [src]);
-    return h("div", { className: `tile ${cartQty > 0 ? "in-cart" : ""}` }, h("div", { className: "tile-img", onClick: () => onOpen(product.id) }, h(LazyImage, { key: src, src, alt: product.name, codigo: product.codigo, onFoto: setConFoto }), !conFoto && h("span", { className: "ptag", style: { background: "var(--blue)" } }, "N\xB0 ", product.orden), !conFoto && product.gift && h("span", { className: "tile-gift" }, h(GiftSvg, null)), cartQty > 0 && h("span", { className: "tile-cart" }, cartQty)), h("div", { className: "tile-name" }, product.name), h("button", { className: "tile-btn", onClick: () => onOpen(product.id) }, h(TagSvg, null), " Ver precio"));
+    return h("div", { className: `tile ${cartQty > 0 ? "in-cart" : ""}`, "data-pid": product.id }, h("div", { className: "tile-img", onClick: () => onOpen(product.id) }, h(LazyImage, { key: src, src, alt: product.name, codigo: product.codigo, onFoto: setConFoto }), !conFoto && h("span", { className: "ptag", style: { background: "var(--blue)" } }, "N\xB0 ", product.orden), !conFoto && product.gift && h("span", { className: "tile-gift" }, h(GiftSvg, null)), cartQty > 0 && h("span", { className: "tile-cart" }, cartQty)), h("div", { className: "tile-name" }, product.name), h("button", { className: "tile-btn", onClick: () => onOpen(product.id) }, h(TagSvg, null), " Ver precio"));
   });
   var WhatsappSvg = ({ s = 16 }) => h("svg", { width: s, height: s, viewBox: "0 0 24 24", fill: "currentColor" }, h("path", { d: "M.057 24l1.687-6.163a11.867 11.867 0 0 1-1.587-5.946C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 0 1 8.413 3.488 11.824 11.824 0 0 1 3.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 0 1-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884a9.86 9.86 0 0 0 1.514 5.26l-.999 3.648 3.974-1.207zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z" }));
   var CameraSvg = ({ s = 18 }) => h("svg", { width: s, height: s, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, h("path", { d: "M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" }), h("circle", { cx: "12", cy: "13", r: "4" }));
@@ -1344,6 +1345,153 @@
       setCapturing(false);
     };
     return h("div", { className: "modal-overlay", onClick: onClose }, h("div", { className: `modal-box ${auto ? "mode-auto" : ""}`, onClick: (e) => e.stopPropagation() }, !playing && h("button", { className: "modal-close", onClick: onClose }, h(XSvg, { s: 18 })), h("div", { className: "modal-scroll" }, h("div", { className: `modal-img ${playing && embed ? "playing" : ""} ${esCat ? "baja" : ""}` }, playing && embed ? h("div", { className: "modal-video" }, embed.type === "youtube" ? h(YouTubePlayer, { id: embed.id, onBack: () => setPlaying(false) }) : embed.type === "video" ? h(FileVideoPlayer, { src: embed.src, name: product.name, shareText: textoVideo, onBack: () => setPlaying(false) }) : h(React.Fragment, null, h("button", { className: "video-back", onClick: () => setPlaying(false) }, h(XSvg, { s: 13 }), " Imagen"), h("iframe", { src: embed.src, title: "Video del producto", allow: "autoplay; encrypted-media; fullscreen", allowFullScreen: true }))) : h(React.Fragment, null, h(LazyImage, { key: src, src, alt: product.name, codigo: product.codigo, onFoto: setConFoto }), !conFoto && !esCat && h("span", { className: "ptag", style: { background: "var(--blue)" } }, "N\xB0 ", product.orden), embed && h("div", { className: "play-overlay", onClick: () => setPlaying(true) }, h("div", { className: "play-btn" }, h("div", { className: "play-circle" }, h(PlaySvg, { s: 26 })), h("span", { className: "play-label" }, "Ver video"))), embed && h(BotonVideoWa, { src: embed.type === "video" ? embed.src : videoUrl, name: product.name, shareText: textoVideo, pill: true }))), h("div", { className: "modal-info" }, esCat && h("div", { className: "pcard-eti" }, product.catRaw, product.sub && !product.detalleCorto ? " \xB7 " + product.sub : ""), h("h3", { className: "pcard-name" }, esCat ? product.titulo || product.name : product.name), esCat && product.detalleCorto && h("p", { className: "pcard-det" }, product.detalleCorto), esCat && product.detalle && product.detalle !== product.detalleCorto && h("p", { className: "pcard-det" }, product.detalle), !product.esServicio && h("div", { className: "pcard-code" }, "C\xF3d. ", product.codigo), product.gift && h("div", { className: "gift-row" }, h(GiftSvg, null), h("span", null, "De Regalo: ", product.gift)), permiteAuto && h("div", { className: "mode-tabs" }, h("button", { className: `mode-tab ${!auto ? "on" : ""}`, onClick: () => setModo("cliente") }, "Precio Cliente"), h("button", { className: `mode-tab ${auto ? "on auto" : ""}`, onClick: () => setModo("auto") }, esCat ? "Precio Asesor" : "Precio Autocompra")), esCat ? h("div", { className: "pcard-content fade-in", key: auto ? "asesor" : "cliente" }, h(PrecioCatalogo, { product, auto, autoPrice, descuento, nota: notaGrupo, aviso: reglasLista && reglasLista.aviso })) : !auto ? h("div", { className: "pcard-content fade-in" }, h(PaymentBlock, { base: product.cashPrice, auto: false, summaryMode: "cliente", soloContado: !permiteCredito, pagoTotal: !permiteCredito, priceData: { regularPrice: product.regularPrice, cashPrice: product.cashPrice, hasPromo }, onState: setPayState }), h("div", { className: "points-note" }, h(SparkSvg, null), h("span", null, bonoVigente2 ? h(React.Fragment, null, "Esta venta da ", h("strong", null, product.points.toLocaleString("es-PE"), " pts"), ". Con el +", bonoInfo.porcentaje, "% vigente llega a ", h("strong", { className: "pts-alto" }, pts.toLocaleString("es-PE"), " pts"), ".") : h(React.Fragment, null, "Esta venta da ", h("strong", null, pts.toLocaleString("es-PE"), " pts"), "."))), muestraPremio && h(GananciaVenta, { vc: product.valorComisionable, puntos: pts })) : h("div", { className: "pcard-content fade-in" }, h(PaymentBlock, { base: autoPrice, auto: true, baseCliente: product.cashPrice, comparativo: true, summaryMode: "auto", priceData: { regularPrice: product.regularPrice, cashPrice: product.cashPrice, autoPrice, descuento, hasPromo }, onState: setPayState }), h("div", { className: "incentives" }, h("div", { className: "inc-header" }, h(SparkSvg, null), h("span", null, bonoVigente2 ? h(React.Fragment, null, "Esta autocompra da ", h("strong", null, product.points.toLocaleString("es-PE"), " pts"), ". Con el +", bonoInfo.porcentaje, "% vigente llega a ", h("strong", { className: "pts-alto" }, pts.toLocaleString("es-PE"), " pts"), ".") : h(React.Fragment, null, "Esta autocompra te da ", h("strong", null, pts.toLocaleString("es-PE"), " pts"), "."))), muestraPremio && (!metaInfo.alcanzado ? h("div", { className: "inc-level pending" }, h("p", null, "Si te encuentras en tus primeras 4 semanas, te faltan ", h("strong", null, "solo ", metaInfo.faltante, " pts"), " y ", h("strong", null, "solo ", metaInfo.meta.afiliados, " afiliados"), " para ganar:"), h("div", { className: "prize-row" }, h(TrophySvg, null), h("span", null, metaInfo.meta.premio))) : h("div", { className: "inc-level achieved" }, h("p", null, metaInfo.esTope ? "\xA1Felicidades!" : "\xA1Excelente!", " Si te encuentras en tus primeras 4 semanas, con ", h("strong", null, "solo ", metaInfo.meta.afiliados, " afiliados"), " ganas:"), h("div", { className: "prize-row ok" }, h(TrophySvg, null), h("span", null, metaInfo.meta.premio))))), muestraPremio && h(GananciaEquipo, { vc: product.valorComisionable, puntos: pts })))), h("div", { className: "modal-foot" }, capErr && h("div", { className: "cap-err" }, capErr), h("div", { className: "quote-actions" }, h("button", { className: "share-quote-btn", onClick: shareQuote, disabled: capturing }, h(ShareSvg, { s: 17 }), " ", capturing ? "Generando\u2026" : "Compartir cotizaci\xF3n"))), h("div", { className: "qc-holder" }, h("div", { className: "qc-card", ref: cardRef }, h("div", { className: "qc-head" }, h("span", { className: "qc-brand" }, "RENA WARE"), h("span", { className: "qc-date" }, fechaHoy)), h("div", { className: "qc-photo" }, h("img", { className: "qc-img", src: cardImg, alt: "" })), h("div", { className: "qc-info" }, h("div", { className: "qc-name" }, product.name), h("div", { className: "qc-code" }, esCat ? (product.esServicio ? [product.catRaw, product.unidad].filter(Boolean).join(" \xB7 ") : "Cod. " + product.codigo) : h(React.Fragment, null, "Cod. ", product.codigo, " - N\xB0 ", product.orden)), h("span", { className: `qc-mode ${psAuto ? "auto" : ""}` }, psAuto ? (esCat ? "Precio Asesor" : "Precio Autocompra") : "Precio Cliente"), ps.tab === "credito" && ps.creditTotal != null ? h(React.Fragment, null, h("div", { className: "qc-credit-big" }, h("div", { className: "qc-cb" }, h("span", { className: "qc-cb-l" }, "Inicial"), h("span", { className: "qc-cb-v" }, formatMoney(ps.inicialCredito)))), h("div", { className: "qc-opts-t" }, "Elige tu plan de cuotas"), h("div", { className: "qc-opts" }, (ps.opciones || []).map((o) => h("div", { key: o.meses, className: "qc-opt" }, h("span", { className: "qc-opt-m" }, o.meses, " cuotas de"), h("span", { className: "qc-opt-v" }, psAuto && o.cuotaCliente ? h(React.Fragment, null, h("span", { className: "qc-strike2" }, formatMoney(o.cuotaCliente)), formatMoney(o.cuota)) : formatMoney(o.cuota)))))) : psAuto ? h("div", { className: "qc-small" }, hasPromo && h("div", { className: "qc-srow" }, h("span", null, "Precio regular"), h("span", { className: "strike" }, formatMoney(product.regularPrice))), h("div", { className: "qc-srow" }, h("span", null, esCat ? "Precio al cliente" : "Precio contado"), h("span", null, formatMoney(product.cashPrice))), h("div", { className: "qc-srow" }, h("span", null, esCat ? "Tu ganancia" : "Menos tu descuento"), h("span", { className: "g" }, esCat ? "" : "- ", formatMoney(descuento))), h("div", { className: "qc-bigtotal" }, h("span", null, esCat ? "Precio asesor" : "Tu precio (contado)"), h("strong", null, formatMoney(autoPrice)))) : h("div", { className: "qc-small" }, hasPromo && h("div", { className: "qc-srow" }, h("span", null, "Precio regular"), h("span", { className: "strike" }, formatMoney(product.regularPrice))), h("div", { className: "qc-bigtotal" }, h("span", null, "Precio contado"), h("strong", null, formatMoney(product.cashPrice))), ps.inicialContado != null && ps.inicialContado < product.cashPrice && h("div", { className: "qc-srow" }, h("span", null, "Inicial ", formatMoney(ps.inicialContado), " | Saldo ", formatMoney(ps.saldoContado)), h("span", null))), psAuto && !esCat && h("div", { className: "qc-pts" }, h("div", { className: "qc-pts-t" }, bonoVigente2 ? "Si compras hoy, tu puntaje sube " + bonoInfo.porcentaje + "% y seria " + pts + " pts." : "Esta autocompra te da " + pts + " pts."), muestraPremio && h("div", { className: "qc-prize-line" }, "Si te encuentras en tus primeras 4 semanas, " + (!metaInfo.alcanzado ? "te faltan solo " + metaInfo.faltante + " pts y solo " + metaInfo.meta.afiliados + " afiliados para ganar:" : "con solo " + metaInfo.meta.afiliados + " afiliados ganas:")), muestraPremio && h("div", { className: "qc-prize-row" }, h(TrophySvg, { s: 16 }), h("span", { className: "qc-prize-name" }, metaInfo.meta.premio))))))));
+  };
+  // ---- Recorrido guiado: la primera vez que alguien entra en este equipo y cuando toca «Ver tutorial».
+  // Oscurece la pantalla, deja a la vista una parte, la explica y sigue con «Siguiente». Cada paso prepara antes
+  // la pantalla (abre la ficha de un producto, toca Crédito, sube la inicial…) y, si esa parte no existe, se salta.
+  var TOUR_KEY = "rw_tour_v1";
+  var AyudaSvg = ({ s = 15 }) => h("svg", { width: s, height: s, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2.2, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": "true" }, h("circle", { cx: 12, cy: 12, r: 10 }), h("path", { d: "M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3" }), h("path", { d: "M12 17h.01" }));
+  var pausa = (ms) => new Promise((r) => setTimeout(r, ms));
+  var seVe = (el) => { if (!el) return false; const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+  var buscarVisible = (sel) => Array.from(document.querySelectorAll(sel)).find(seVe) || null;
+  var esperarEl = async (sel, ms) => {
+    const hasta = Date.now() + (ms || 2500);
+    for (;;) {
+      const el = buscarVisible(sel);
+      if (el || Date.now() > hasta) return el;
+      await pausa(60);
+    }
+  };
+  var tocar = async (sel, i) => {
+    await esperarEl(sel, 1500);
+    const b = document.querySelectorAll(sel)[i || 0];
+    if (b && !b.disabled && !b.classList.contains("on")) { b.click(); await pausa(150); }
+  };
+  var unirCajas = (els) => {
+    let t = Infinity, l = Infinity, b = -Infinity, r = -Infinity;
+    els.forEach((el) => { const c = el.getBoundingClientRect(); if (!c.width || !c.height) return; t = Math.min(t, c.top); l = Math.min(l, c.left); b = Math.max(b, c.bottom); r = Math.max(r, c.right); });
+    return t === Infinity ? null : { top: t, left: l, bottom: b, right: r, width: r - l, height: b - t };
+  };
+  var scrollDe = (el) => {
+    for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+      const o = getComputedStyle(p).overflowY;
+      if ((o === "auto" || o === "scroll") && p.scrollHeight > p.clientHeight + 1) return p;
+    }
+    return null;
+  };
+  // Sube lo resaltado al borde de arriba de lo visible (en la página, bajo lo que queda fijo) para que la tarjeta quepa
+  // debajo; si en una pantalla chica así no cabe, lo deja abajo y la tarjeta va encima
+  var encuadrar = (els, alto) => {
+    const u = unirCajas(els);
+    if (!u || els.some((el) => el.closest(".menu-fijo, .sticky-nav, .nav-top, .modal-foot"))) return;
+    const vh = window.innerHeight, pad = 7, m = 12;
+    const caja = scrollDe(els[0]);
+    let techo, piso;
+    if (caja) { const c = caja.getBoundingClientRect(); techo = c.top + m; piso = c.bottom - m; }
+    else { const sn = document.querySelector(".sticky-nav"); techo = (sn ? (parseFloat(getComputedStyle(sn).top) || 0) + sn.offsetHeight : 0) + m; piso = vh - m; }
+    let destino = techo;
+    if (techo + u.height + pad + 2 * m + (alto || 0) > vh) destino = Math.max(techo, piso - pad - u.height);
+    if (caja) caja.scrollTop += u.top - destino;
+    else window.scrollTo(0, Math.max(0, (window.scrollY || 0) + u.top - destino));
+  };
+  // Dónde va la tarjeta: debajo de lo resaltado, si no cabe encima; en escritorio, al costado si hay sitio
+  var colocarTarjeta = (u, alto, ancho) => {
+    const vw = window.innerWidth, vh = window.innerHeight, m = 12;
+    const lim = (v, a, b) => Math.max(a, Math.min(b, v));
+    if (!u) return { top: lim((vh - alto) / 2, m, vh - alto - m), left: (vw - ancho) / 2 };
+    if (vw >= 900) {
+      const top = lim(u.top, m, vh - alto - m);
+      if (vw - u.right >= ancho + 2 * m + 8) return { top, left: u.right + m + 8 };
+      if (u.left >= ancho + 2 * m + 8) return { top, left: u.left - m - 8 - ancho };
+    }
+    const left = lim(u.left + u.width / 2 - ancho / 2, m, vw - ancho - m);
+    if (vh - u.bottom >= alto + 2 * m) return { top: u.bottom + m, left };
+    if (u.top >= alto + 2 * m) return { top: u.top - m - alto, left };
+    return { top: vh - alto - m, left };
+  };
+  var Tour = ({ pasos, desde, onFin }) => {
+    const total = pasos.length;
+    const [i, setI] = useState(Math.min(desde || 0, total - 1));
+    const [listoEn, setListoEn] = useState(-1);
+    const [datos, setDatos] = useState(null);
+    const dir = useRef(1);
+    const focoRef = useRef(null), cartaRef = useRef(null), sigRef = useRef(null);
+    const paso = pasos[i];
+    const listo = listoEn === i;
+    const ultimo = i === total - 1;
+    const ir = (n) => {
+      if (n >= total) { onFin("fin", i, total); return; }
+      dir.current = n < i ? -1 : 1;
+      setI(Math.max(0, n));
+    };
+    useEffect(() => {
+      let vivo = true;
+      (async () => {
+        let d = null;
+        try { if (paso.antes) d = await paso.antes(); } catch (e) {}
+        if (!vivo) return;
+        if (paso.sel) {
+          const hay = await esperarEl(paso.requiere || paso.sel[0], 2500);
+          if (!vivo) return;
+          if (!hay) {   // esta pantalla no tiene esa parte (p. ej. un producto sin video): sigue con el próximo
+            const n = i + dir.current;
+            if (n >= total) onFin("fin", i, total); else setI(Math.max(0, n));
+            return;
+          }
+          encuadrar(paso.sel.map(buscarVisible).filter(Boolean), cartaRef.current ? cartaRef.current.offsetHeight : 0);
+          await pausa(60);
+          if (!vivo) return;
+        }
+        setDatos(d);
+        setListoEn(i);
+      })();
+      return () => { vivo = false; };
+    }, [i]);
+    useEffect(() => {
+      if (!listo) return;
+      const poner = () => {
+        const carta = cartaRef.current, foco = focoRef.current;
+        if (!carta) return;
+        const u = paso.sel ? unirCajas(paso.sel.map(buscarVisible).filter(Boolean)) : null;
+        const p = 7;
+        const caja = u && { top: u.top - p, left: u.left - p, bottom: u.bottom + p, right: u.right + p, width: u.width + 2 * p, height: u.height + 2 * p };
+        if (foco && caja) { foco.style.top = caja.top + "px"; foco.style.left = caja.left + "px"; foco.style.width = caja.width + "px"; foco.style.height = caja.height + "px"; }
+        const vw = window.innerWidth;
+        const ancho = vw >= 600 ? 380 : vw - 24;
+        carta.style.width = ancho + "px";
+        const pos = colocarTarjeta(caja, carta.offsetHeight, ancho);
+        carta.style.top = Math.round(pos.top) + "px";
+        carta.style.left = Math.round(pos.left) + "px";
+      };
+      poner();
+      const t = setInterval(poner, 200);
+      window.addEventListener("scroll", poner, true);
+      window.addEventListener("resize", poner);
+      try { if (sigRef.current) sigRef.current.focus({ preventScroll: true }); } catch (e) {}
+      return () => { clearInterval(t); window.removeEventListener("scroll", poner, true); window.removeEventListener("resize", poner); };
+    }, [listo, i, datos]);
+    useEffect(() => {
+      const tecla = (e) => {
+        if (e.key === "Escape") { e.preventDefault(); onFin("salto", i, total); }
+        else if (e.key === "ArrowRight" && listo) { e.preventDefault(); ir(i + 1); }
+        else if (e.key === "ArrowLeft" && listo && i > 0) { e.preventDefault(); ir(i - 1); }
+      };
+      window.addEventListener("keydown", tecla);
+      return () => window.removeEventListener("keydown", tecla);
+    }, [i, listo]);
+    const texto = typeof paso.texto === "function" ? paso.texto(datos) : paso.texto;
+    return h("div", { className: "tour", role: "dialog", "aria-modal": "true", "aria-labelledby": "tour-tit", "aria-describedby": "tour-txt" },
+      h("div", { className: `tour-velo ${paso.sel ? "" : "lleno"}` }),
+      paso.sel && h("div", { className: "tour-foco", ref: focoRef, "aria-hidden": "true" }),
+      h("div", { className: `tour-card ${listo ? "listo" : ""}`, ref: cartaRef },
+        h("div", { className: "tour-avance" }, h("span", null, i + 1, " de ", total), h("span", { className: "tour-barra" }, h("i", { style: { width: Math.round((i + 1) / total * 100) + "%" } }))),
+        h("h3", { className: "tour-tit", id: "tour-tit" }, paso.titulo),
+        h("p", { className: "tour-txt", id: "tour-txt", "aria-live": "polite" }, texto),
+        h("div", { className: "tour-botones" },
+          !ultimo && h("button", { type: "button", className: "tour-saltar", onClick: () => onFin("salto", i, total) }, i === 0 ? "Saltar tutorial" : "Saltar"),
+          h("span", { className: "tour-esp" }),
+          i > 0 && h("button", { type: "button", className: "tour-atras", disabled: !listo, onClick: () => ir(i - 1) }, "Atr\xE1s"),
+          h("button", { type: "button", className: "tour-sig", ref: sigRef, disabled: !listo, onClick: () => ir(i + 1) }, i === 0 ? "Empezar" : ultimo ? "Terminar" : "Siguiente"))));
   };
   var BonoSemanaAdmin = ({ bs, setConfig }) => {
     const set = (campo, val) => setConfig((c) => ({ ...c, bonoSemana: { ...leerBonoSemana(c), [campo]: val } }));
@@ -1901,7 +2049,7 @@
           --tinta:#0f172a;--text:#0f172a;--muted:#64748b;--bg:#f2f4f7;--card:#fff;--border:#e1e6ed;--suave:#f6f8fa;
           --blue:#2563eb;--blueD:#1d4ed8;--blueL:#eef4ff;--blueB:#c7d7fe;
           --indigo:#2563eb;--indigoL:#eef4ff;--indigoD:#1e3a8a; /* ya no hay índigo: es el mismo azul */
-          --amber:#b45309;--amberD:#92400e;--amberL:#fff7ed;--amberB:#fed7aa;
+          --amber:#b45309;--amberD:#92400e;--amberL:#fff7ed;--amberB:#fed7aa;--marca:#fbbf24;
           --green:#047857;--greenL:#ecfdf5;--greenB:#a7f3d0;
           --red:#dc2626;--redL:#fef2f2;
           --r:16px;--rs:10px;--shadow:0 1px 2px rgba(15,23,42,.04),0 8px 24px rgba(15,23,42,.06)}
@@ -2504,6 +2652,33 @@
         .cat-pie{font-size:11.8px;color:var(--muted);line-height:1.5}
         .admin-okbtn{background:var(--blue);color:#fff;border:none;font-size:12px;font-weight:700;padding:9px 14px;border-radius:8px;cursor:pointer;font-family:inherit;white-space:nowrap}
         .admin-okbtn:disabled{opacity:.6;cursor:default}
+/* ===== Recorrido guiado (tutorial): foco con la pantalla oscurecida alrededor y una tarjeta que explica ===== */
+.tour{position:fixed;inset:0;z-index:300}
+.tour-velo{position:absolute;inset:0;touch-action:none}
+.tour-velo.lleno{background:rgba(15,23,42,.62);animation:fadeIn .2s ease-out}
+.tour-foco{position:absolute;top:50%;left:50%;width:0;height:0;border-radius:14px;box-shadow:0 0 0 3px var(--marca),0 0 0 9999px rgba(15,23,42,.62);pointer-events:none;transition:top .32s cubic-bezier(.2,.8,.2,1),left .32s cubic-bezier(.2,.8,.2,1),width .32s cubic-bezier(.2,.8,.2,1),height .32s cubic-bezier(.2,.8,.2,1)}
+.tour-foco::after{content:"";position:absolute;inset:-3px;border-radius:17px;animation:tourPulso 1.7s ease-out infinite}
+@keyframes tourPulso{0%{box-shadow:0 0 0 0 rgba(251,191,36,.7)}70%{box-shadow:0 0 0 14px rgba(251,191,36,0)}100%{box-shadow:0 0 0 0 rgba(251,191,36,0)}}
+.tour-card{position:absolute;top:40%;left:12px;width:calc(100vw - 24px);max-width:380px;box-sizing:border-box;padding:16px 16px 14px;background:#fff;border-radius:18px;box-shadow:0 22px 60px rgba(2,8,23,.42);color:var(--text);opacity:0;transition:opacity .16s ease,top .32s cubic-bezier(.2,.8,.2,1),left .32s cubic-bezier(.2,.8,.2,1)}
+.tour-card.listo{opacity:1}
+.tour-avance{display:flex;align-items:center;gap:10px;font-size:12.5px;font-weight:700;color:var(--muted)}
+.tour-barra{flex:1;height:5px;border-radius:5px;background:var(--border);overflow:hidden}
+.tour-barra i{display:block;height:100%;border-radius:5px;background:var(--blue);transition:width .3s ease}
+.tour-tit{margin:10px 0 6px;font-size:19px;line-height:1.25;font-weight:800;color:var(--tinta)}
+.tour-txt{margin:0 0 14px;font-size:16px;line-height:1.5;color:var(--text)}
+.tour-botones{display:flex;align-items:center;gap:8px}
+.tour-esp{flex:1}
+.tour-saltar{padding:10px 4px;border:0;background:none;color:var(--muted);font-family:inherit;font-size:14.5px;font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.tour-atras,.tour-sig{min-height:46px;padding:0 16px;border-radius:12px;font-family:inherit;font-size:15.5px;cursor:pointer}
+.tour-atras{border:1.5px solid var(--border);background:#fff;color:var(--text);font-weight:700}
+.tour-sig{border:0;background:var(--blue);color:#fff;font-weight:800;padding:0 20px;box-shadow:0 8px 18px rgba(37,99,235,.3)}
+.tour-atras:disabled,.tour-sig:disabled{opacity:.55;cursor:default}
+.tour-card button:focus-visible{outline:3px solid var(--blueB);outline-offset:2px}
+.nav-top-fila{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 2px 6px}
+.nav-top-fila .lista-fecha{margin:0 0 0 auto}
+.tour-ver{display:inline-flex;align-items:center;gap:6px;padding:6px 12px 6px 9px;border:1px solid var(--blueB);border-radius:999px;background:var(--blueL);color:var(--blueD);font-family:inherit;font-size:13px;font-weight:700;line-height:1.1;cursor:pointer;white-space:nowrap}
+.cuenta-tour{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;margin-bottom:8px;padding:11px;border-radius:11px;border:1.5px solid var(--blueB);background:var(--blueL);color:var(--blueD);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer}
+@media (prefers-reduced-motion:reduce){.tour-foco,.tour-card,.tour-barra i{transition:none}.tour-foco::after{animation:none}}
         /* ===== Capa de estilo (13/11/2026): el mismo esqueleto con otra piel. Los colores salen de :root; una regla nueva no trae un color suelto. ===== */
         .header{background:radial-gradient(120% 240% at 0% 100%,#1c2c4f 0%,#0f172a 62%);box-shadow:0 8px 24px rgba(15,23,42,.16)}
         .header::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;pointer-events:none;background:linear-gradient(90deg,rgba(255,255,255,0),rgba(203,213,225,.5) 28%,rgba(255,255,255,.9) 50%,rgba(203,213,225,.5) 72%,rgba(255,255,255,0))}
@@ -2664,12 +2839,13 @@
     const [simOpen, setSimOpen] = useState(false);
     const [promosOpen, setPromosOpen] = useState(false);
     const [cuentaOpen, setCuentaOpen] = useState(false);
+    const [tour, setTour] = useState(null);
     // Cerrar sesi\xF3n: este equipo deja de recordar a la persona; para volver a entrar escribe su DNI
     const salir = () => {
       rastrear("sesion_fin", {});
       guardarTok(SESION_KEY, "");
       sesionTok = "";
-      setCuentaOpen(false); setSelectedId(null); setSimOpen(false); setPromosOpen(false);
+      setCuentaOpen(false); setTour(null); setSelectedId(null); setSimOpen(false); setPromosOpen(false);
       setCart([]); setSearchQuery(""); setActiveLista("general"); setActiveCat(TODAS_KEY);
       setSesion(null);
       try { window.scrollTo(0, 0); } catch (e) {}
@@ -2892,9 +3068,104 @@
     useEffect(() => { if (sesion && activeLista) rastrear("ver_lista", { lista: activeLista }); }, [activeLista, sesion]);
     const bonoActivoLista = bonoDe(activeLista);
     const renderTile = (p) => h(ProductTile, { key: p.id, product: p, cartQty: cartQtyOf(p.id), onOpen: openProduct, imageOverrides: overrides });
+    // ---- Recorrido guiado: los pasos se arman al empezar, con un producto de la Lista General que tenga video y crédito
+    const armarTour = () => {
+      const gen = listas.some((l) => l.key === "general") ? "general" : (listas[0] || {}).key;
+      const lg = listas.find((l) => l.key === gen) || {};
+      const nombreGen = lg.labelCorto || lg.label || "Lista General";
+      const enGen = catalogo.productos.filter((p) => p.lista === gen && !p.esCat).sort((a, b) => (a.orden || 0) - (b.orden || 0));
+      const conVideo = (p) => !!videoEmbed(videoSrc(p, adminConfig.videos));
+      const aCredito = (p) => !Finanzas.esSoloContado(p.cashPrice) && Finanzas.eligeCredito(p.cashPrice);
+      const demo = enGen.find((p) => conVideo(p) && aCredito(p)) || enGen.find(aCredito) || enGen[0] || null;
+      const mosaico = demo ? '.tile[data-pid="' + (window.CSS && CSS.escape ? CSS.escape(String(demo.id)) : String(demo.id)) + '"]' : "";
+      const alInicio = async () => {
+        setSelectedId(null); setSimOpen(false); setPromosOpen(false); setCartOpen(false); setCuentaOpen(false); setSearchQuery("");
+        setActiveLista(gen); setActiveCat(TODAS_KEY);
+        await pausa(90);
+        try { window.scrollTo(0, 0); } catch (e) {}
+        await pausa(90);
+      };
+      const conFicha = async () => {
+        if (!demo || document.querySelector(".modal-box")) return;
+        setSelectedId(demo.id);
+        await esperarEl(".modal-box", 2500);
+        await pausa(320);
+      };
+      const enCliente = async (pestana) => { await conFicha(); await tocar(".modal-box .mode-tab", 0); await tocar(".modal-box .tab-bar .tab-btn", pestana); };
+      // Sube la inicial de verdad (como si la escribiera la asesora) y anota cómo cambió la cuota del plazo elegido
+      const subirInicial = async () => {
+        await enCliente(1);
+        if (!demo || !(await esperarEl(".modal-box .tab-content .cbox.editable input", 1500))) return null;
+        const min = Finanzas.inicialMinima(demo.cashPrice), max = Finanzas.maxInicialCredito(demo.cashPrice, min);
+        const meta = Math.min(max, Math.ceil(min * 2 / 100) * 100);
+        if (!(meta > min)) return null;
+        const escribir = async (v) => {
+          const el = document.querySelector(".modal-box .tab-content .cbox.editable input");
+          if (!el) return;
+          Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(el, String(v));
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+          el.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+          await pausa(160);
+        };
+        const cuota = (m) => { const b = Array.from(document.querySelectorAll(".modal-box .inst-btn")).find((x) => (x.querySelector(".inst-m") || {}).textContent === m); return b ? (b.querySelector(".inst-v") || {}).textContent || "" : ""; };
+        await escribir(min);
+        const sel = document.querySelector(".modal-box .inst-btn.sel .inst-m");
+        const m = sel ? sel.textContent : "";
+        const de = cuota(m);
+        await escribir(meta);
+        const a = cuota(m);
+        return m && de && a && de !== a ? { inicial: formatMoney(meta), meses: parseInt(m, 10), de, a } : null;
+      };
+      return [
+        { titulo: "¡Hola! Te mostramos el portal", antes: alInicio,
+          texto: "En un minuto verás lo principal: las listas, cómo buscar, ver las cuotas, subir la inicial, la autocompra y los videos." },
+        { titulo: "Elige la lista", sel: [".lista-switch"], antes: alInicio,
+          texto: "Toca una lista para ver sus precios. «" + nombreGen + "» tiene todos los productos." + (listas.some((l) => l.especial) ? " Las de color naranja son especiales y dicen hasta qué día valen." : "") },
+        { titulo: "Busca un producto", sel: [".search-bar", ".nav-tabs"], antes: alInicio,
+          texto: "Escribe el nombre, el código o el número del producto. Con los botones de abajo ves solo un tipo de producto." },
+        demo && { titulo: "Abre un producto", sel: [mosaico], antes: alInicio,
+          texto: "Toca la foto o «Ver precio». Abramos este para ver todo lo que trae." },
+        demo && { titulo: "Muestra el video", sel: [".modal-box .modal-img"], requiere: ".modal-box .play-overlay", antes: conFicha,
+          texto: "Toca «Ver video» para enseñárselo a tu cliente en ese momento. Con «Enviar video» se lo mandas por WhatsApp." },
+        demo && { titulo: "Precio para tu cliente", sel: [".modal-box .mode-tabs", ".modal-box .price-block"], requiere: ".modal-box .price-block", antes: () => enCliente(0),
+          texto: "En «Precio Cliente» ves lo que paga tu cliente. Este es el precio al contado." },
+        demo && { titulo: "Tus puntos y tu ganancia", sel: [".modal-box .points-note", ".modal-box .gan"], antes: () => enCliente(0),
+          texto: "Aquí ves los puntos que te da la venta. Toca «Cuánto gano con esta venta» para ver el detalle de tu ganancia." },
+        demo && { titulo: "Mira las cuotas", sel: [".modal-box .tab-bar", ".modal-box .installments-grid"], requiere: ".modal-box .installments-grid", antes: () => enCliente(1),
+          texto: "Toca «Crédito» para ver las cuotas. Cada botón es un plazo: los meses y cuánto se paga al mes." },
+        demo && { titulo: "Sube la inicial", sel: [".modal-box .tab-content .cbox.editable", ".modal-box .installments-grid"], requiere: ".modal-box .installments-grid", antes: subirInicial,
+          texto: (d) => d ? "Toca el monto de la inicial y escribe lo que da tu cliente. Mira: con " + d.inicial + " de inicial, la cuota de " + d.meses + " meses baja de " + d.de + " a " + d.a + "."
+            : "Toca el monto de la inicial y escribe lo que da tu cliente: mientras más inicial, más baja la cuota." },
+        demo && { titulo: "Autocompra", sel: [".modal-box .mode-tabs", ".modal-box .auto-ticket"], requiere: ".modal-box .auto-ticket",
+          antes: async () => { await enCliente(0); await tocar(".modal-box .mode-tab", 1); },
+          texto: "Si el producto es para ti, toca «Precio Autocompra»: ves tu precio ya con tu descuento. También tiene contado y crédito." },
+        demo && { titulo: "Comparte la cotización", sel: [".modal-box .share-quote-btn"], antes: async () => { await conFicha(); await tocar(".modal-box .mode-tab", 0); },
+          texto: "Arma una imagen con el precio, la inicial o las cuotas que elegiste, lista para mandar a tu cliente por WhatsApp." },
+        { titulo: "¡Listo!", sel: [".tour-ver"], antes: alInicio,
+          texto: "Cuando quieras repasarlo, toca «Ver tutorial» aquí arriba. También está en el botón de tu cuenta, arriba a la derecha." }
+      ].filter(Boolean);
+    };
+    const abrirTour = (origen) => {
+      setCuentaOpen(false);
+      guardarTok(TOUR_KEY, "1");   // sale solo la primera vez; después, desde «Ver tutorial»
+      rastrear("tutorial", { accion: "inicio", origen });
+      setTour({ n: Date.now(), origen, desde: origen === "primera vez" ? 0 : 1, pasos: armarTour() });
+    };
+    const terminarTour = (accion, paso, total) => {
+      rastrear("tutorial", { accion, paso: paso + 1, de: total, origen: tour ? tour.origen : "" });
+      setTour(null);
+      setSelectedId(null);
+      setSearchQuery("");
+      try { window.scrollTo(0, 0); } catch (e) {}
+    };
+    useEffect(() => {
+      if (!sesion || adminOpen || tour || catalogoState !== "ok" || !catalogo.productos.length || leerTok(TOUR_KEY)) return;
+      const t = setTimeout(() => abrirTour("primera vez"), 700);
+      return () => clearTimeout(t);
+    }, [sesion, adminOpen, catalogoState, catalogo.productos.length]);
     if (verificando) return h("div", { className: "login-espera" }, "Un momento\u2026");
     if (!sesion && !adminOpen) return h(Ingreso, { onEntrar: (d) => { sesionTok = d.token; setSesion(d); } });
-    return h("div", { className: "app" }, h("header", { className: "header" }, h("div", { className: "header-in" }, h("h1", { className: "header-t", onClick: irArriba }, "Precios y Promociones"), h("div", { className: "header-right" }, bonoActivoLista.activo && !(listaActual && listaActual.sinPuntos) && h("div", { className: "bonus-pill", title: (bonoInfo.semana ? `${bonoInfo.semana}% por ser primera semana del per\xEDodo` : "Puntaje adicional vigente") + (bonoActivoLista.extra ? ` + ${bonoActivoLista.extra}% de esta lista` : "") }, h(ClockSvg, null), h("span", null, "+", bonoActivoLista.porcentaje, "%")), sesion && h("div", { className: "cuenta" }, h("button", { className: "header-cuenta", onClick: () => setCuentaOpen(!cuentaOpen), "aria-label": "Tu sesi\xF3n", "aria-expanded": cuentaOpen ? "true" : "false" }, h(CuentaSvg, null)), cuentaOpen && h("div", { className: "cuenta-fondo", onClick: () => setCuentaOpen(false) }), cuentaOpen && h("div", { className: "cuenta-menu", role: "dialog", "aria-label": "Tu sesi\xF3n" }, h("div", { className: "cuenta-nom" }, sesion.nombre || "Tu sesi\xF3n"), h("p", { className: "cuenta-txt" }, "Este equipo te recuerda: no tienes que escribir tu DNI cada vez."), h("button", { className: "cuenta-salir", onClick: salir }, "Cerrar sesi\xF3n")))))), h("main", { className: "main" }, h("div", { className: "nav-top", ref: navTopRef }, listas.length > 1 && listaActual && listaActual.actualizada && h("div", { className: "lista-fecha" }, "Actualizada al ", new Date(listaActual.actualizada).toLocaleDateString("es-PE", { day: "2-digit", month: "short", year: "numeric", timeZone: "America/Lima" }))), h("div", { className: "menu-fijo", ref: menuRef }, h("div", { className: "lista-switch", style: { "--nd": listas.length <= 6 ? listas.length : Math.ceil(listas.length / 2) } }, listas.map((l, i) => h("button", { key: l.key, className: `lista-btn ${l.especial ? "esp " : ""}${activeLista === l.key ? "on" : ""}`, style: { "--sp": repartoListas(listas.length)[i] }, onClick: () => {
+    return h("div", { className: "app" }, h("header", { className: "header" }, h("div", { className: "header-in" }, h("h1", { className: "header-t", onClick: irArriba }, "Precios y Promociones"), h("div", { className: "header-right" }, bonoActivoLista.activo && !(listaActual && listaActual.sinPuntos) && h("div", { className: "bonus-pill", title: (bonoInfo.semana ? `${bonoInfo.semana}% por ser primera semana del per\xEDodo` : "Puntaje adicional vigente") + (bonoActivoLista.extra ? ` + ${bonoActivoLista.extra}% de esta lista` : "") }, h(ClockSvg, null), h("span", null, "+", bonoActivoLista.porcentaje, "%")), sesion && h("div", { className: "cuenta" }, h("button", { className: "header-cuenta", onClick: () => setCuentaOpen(!cuentaOpen), "aria-label": "Tu sesi\xF3n", "aria-expanded": cuentaOpen ? "true" : "false" }, h(CuentaSvg, null)), cuentaOpen && h("div", { className: "cuenta-fondo", onClick: () => setCuentaOpen(false) }), cuentaOpen && h("div", { className: "cuenta-menu", role: "dialog", "aria-label": "Tu sesi\xF3n" }, h("div", { className: "cuenta-nom" }, sesion.nombre || "Tu sesi\xF3n"), h("p", { className: "cuenta-txt" }, "Este equipo te recuerda: no tienes que escribir tu DNI cada vez."), h("button", { className: "cuenta-tour", onClick: () => abrirTour("menu") }, h(AyudaSvg, null), "Ver tutorial"), h("button", { className: "cuenta-salir", onClick: salir }, "Cerrar sesi\xF3n")))))), h("main", { className: "main" }, h("div", { className: "nav-top", ref: navTopRef }, h("div", { className: "nav-top-fila" }, h("button", { type: "button", className: "tour-ver", onClick: () => abrirTour("boton") }, h(AyudaSvg, null), "Ver tutorial"), listas.length > 1 && listaActual && listaActual.actualizada && h("div", { className: "lista-fecha" }, "Actualizada al ", new Date(listaActual.actualizada).toLocaleDateString("es-PE", { day: "2-digit", month: "short", year: "numeric", timeZone: "America/Lima" })))), h("div", { className: "menu-fijo", ref: menuRef }, h("div", { className: "lista-switch", style: { "--nd": listas.length <= 6 ? listas.length : Math.ceil(listas.length / 2) } }, listas.map((l, i) => h("button", { key: l.key, className: `lista-btn ${l.especial ? "esp " : ""}${activeLista === l.key ? "on" : ""}`, style: { "--sp": repartoListas(listas.length)[i] }, onClick: () => {
       setActiveLista(l.key);
       setActiveCat(TODAS_KEY);
       setSimOpen(false);
@@ -2923,7 +3194,7 @@
         if (/admin/i.test(location.pathname + location.hash)) history.replaceState(null, "", "/");
       } catch (e) {
       }
-    } }));
+    } }), tour && h(Tour, { key: tour.n, pasos: tour.pasos, desde: tour.desde, onFin: terminarTour }));
   }
   var root = ReactDOM.createRoot(document.getElementById("root"));
   root.render(h(App, null));

@@ -47,6 +47,19 @@ validan la sesión.
   `site_config`, que se edita desde el panel de administración.
 - **Asesores**: la base del equipo. Se entra con el DNI (desde el 12/11/2026): la persona tiene que estar activa en la base del equipo con su DNI (el celular no hace falta). La pestaña dice a quién le falta el DNI y permite invitar, con DNI, a alguien que no está en el equipo.
 
+- **Uso**: `eventos` (con `registrar_evento`): inicio y cierre de sesión, latido cada minuto, listas y fichas que se abren, simulador, buscador maestro y el tutorial (`tipo = 'tutorial'`, con `accion` inicio, fin o salto y el paso).
+
+## Tutorial
+
+La primera vez que alguien entra en un equipo arranca solo un recorrido de 12
+pasos: listas, buscador, abrir un producto, video, precio al contado, puntos y
+ganancia, cuotas, subir la inicial (la sube de verdad y dice cuánto baja la
+cuota), autocompra y compartir la cotización. Se puede saltar en cualquier paso
+y se vuelve a ver con «Ver tutorial» (arriba, junto a la fecha de la lista, y en
+el menú de la cuenta). Que ya salió se guarda en el navegador (`rw_tour_v1`): en
+otro celular sale otra vez. Usa un producto de la Lista General que tenga video
+y crédito; si una parte no está (un producto sin video), ese paso se salta.
+
 Las fotos tienen dos caminos y gana el primero que exista:
 
 1. La URL que el panel guardó en `site_config.imagenes[codigo]` — las que se

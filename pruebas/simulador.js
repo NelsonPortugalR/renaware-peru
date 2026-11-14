@@ -60,7 +60,8 @@ window.supabase = { createClient: function () {
 
 /* o.dir: carpeta del portal · o.mock: datos (los de datos.json) · o.movil: celular de 390 px ·
    o.ruta: "/admin" · o.sinSesion: arranca sin sesión de asesor · o.reloj: fecha que ve la página ·
-   o.fotos: carpetas donde buscar las fotos que la página pide al Storage */
+   o.fotos: carpetas donde buscar las fotos que la página pide al Storage ·
+   o.tour: deja que arranque solo el tutorial de la primera vez (si no, se da por visto) */
 async function abrir(o) {
   o = o || {};
   const dir = o.dir || path.join(__dirname, "..");
@@ -74,8 +75,8 @@ async function abrir(o) {
     isMobile: !!o.movil, hasTouch: !!o.movil, locale: "es-PE", timezoneId: "America/Lima"
   });
   const registro = { escrituras: [], pedidos: [], errores: [] };
-  await ctx.addInitScript((m) => { window.__MOCK = m; try { if (m.__sesion !== false) localStorage.setItem("rw_sesion_v1", "tok-asesor"); } catch (e) {} },
-    Object.assign({}, mock, { __sesion: o.sinSesion ? false : true }));
+  await ctx.addInitScript((m) => { window.__MOCK = m; try { if (m.__sesion !== false) localStorage.setItem("rw_sesion_v1", "tok-asesor"); if (!m.__tour) localStorage.setItem("rw_tour_v1", "1"); } catch (e) {} },
+    Object.assign({}, mock, { __sesion: o.sinSesion ? false : true, __tour: !!o.tour }));
   if (o.reloj) await ctx.addInitScript((t) => { const D = Date, d0 = D.now(); const corr = t - d0;
     window.Date = class extends D { constructor(...a) { if (a.length) super(...a); else super(D.now() + corr); } static now() { return D.now() + corr; } }; }, Date.parse(o.reloj));
   await ctx.route("**/*", async (ruta) => {
