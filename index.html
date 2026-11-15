@@ -667,7 +667,7 @@
       let s = porTitulo[titulo];
       if (!s) {
         const d0 = def(titulo);
-        s = porTitulo[titulo] = { key: "sec-" + claveDe(titulo), titulo, familia: d0 && d0.familia || "", nota: d0 && d0.nota || "", variantes: [], grupos: [], tambien: [], bloques: [], sinPrecio: [], total: 0, cuenta: 0, chip: "" };
+        s = porTitulo[titulo] = { key: "sec-" + claveDe(titulo), titulo, familia: d0 && d0.familia || "", nota: d0 && d0.nota || "", fotos: d0 && Array.isArray(d0.fotos) ? d0.fotos.filter((m) => m && m.foto) : [], variantes: [], grupos: [], tambien: [], bloques: [], sinPrecio: [], total: 0, cuenta: 0, chip: "" };
         secciones.push(s);
       }
       const d = def(n);
@@ -965,6 +965,9 @@
       h("div", { className: "cat-sec-tit" }, h("h2", null, s.titulo), h("span", { className: "cat-count" }, s.cuenta)),
       s.nota && h("p", { className: "cat-sec-nota" }, s.nota),
       s.variantes.length > 0 && h("div", { className: "cat-sec-vars" }, s.variantes.map((v) => h("span", { key: v.nombre }, h("strong", null, v.nombre), v.nota ? " \xB7 " + v.nota.replace(/\.$/, "") : "")))),
+    s.fotos && s.fotos.length > 0 && h("div", { className: "cat-modelos" }, s.fotos.map((m) => h("figure", { key: m.foto, className: "cat-modelo" },
+      h("img", { src: /^(https?:)?\//.test(m.foto) ? m.foto : "/promociones/" + m.foto + ".webp", alt: m.nombre || "", width: 400, height: 300, loading: "lazy", onError: (e) => { e.target.style.visibility = "hidden"; } }),
+      (m.nombre || m.nota) && h("figcaption", null, m.nombre && h("strong", null, m.nombre), m.nota && h("span", null, m.nota))))),
     s.bloques.map((b) => h("div", { className: "cat-blo", key: b.sub || "_" },
       (b.sub || b.foto) && h("div", { className: "cat-blo-head" },
         b.foto && h("div", { className: "cat-blo-img" }, h("img", { src: imgSrc(b.foto, imageOverrides), alt: "", loading: "lazy", onError: (e) => { e.target.parentNode.style.display = "none"; } })),
@@ -2654,6 +2657,14 @@
         .cat-pie{font-size:11.8px;color:var(--muted);line-height:1.5}
         .admin-okbtn{background:var(--blue);color:#fff;border:none;font-size:12px;font-weight:700;padding:9px 14px;border-radius:8px;cursor:pointer;font-family:inherit;white-space:nowrap}
         .admin-okbtn:disabled{opacity:.6;cursor:default}
+/* ===== Fotos de una sección del catálogo (cot_grupos.fotos): los cuatro modelos de cocina de inducción ===== */
+.cat-modelos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 2px 6px}
+@media (min-width:700px){.cat-modelos{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.cat-modelo{margin:0;background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.cat-modelo img{display:block;width:100%;height:auto;aspect-ratio:4/3;object-fit:contain;background:#fff}
+.cat-modelo figcaption{padding:8px 10px 10px;border-top:1px solid var(--border)}
+.cat-modelo strong{display:block;font-size:16px;font-weight:800;color:var(--tinta);line-height:1.2}
+.cat-modelo span{display:block;margin-top:2px;font-size:13px;line-height:1.35;color:var(--muted)}
 /* ===== Recorrido guiado (tutorial): foco con la pantalla oscurecida alrededor y una tarjeta que explica ===== */
 .tour{position:fixed;inset:0;z-index:300}
 .tour-velo{position:absolute;inset:0;touch-action:none}

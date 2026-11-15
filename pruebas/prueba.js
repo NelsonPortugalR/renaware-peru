@@ -257,6 +257,14 @@ async function servicios() {
   ok(/^Rena Lite .*S\/ 90 la unidad$/.test(lim[0]) && /S\/ 35 por olla$/.test(lim[1]) && /S\/ 50 por pieza$/.test(lim[2]), "limpieza: Rena Lite 90, olla 35, grande 50 → " + lim.join(" | "));
   igual((await sec("Cocina de inducción").locator(".cat-sp-fila em").allInnerTexts()), ["Gratis", "Según diagnóstico", "Según diagnóstico", "Según diagnóstico", "Según diagnóstico"], "cocina: revisión gratis y cambios según diagnóstico");
   ok(/S\/ 140$/.test((await filas("Cocina de inducción"))[0]), "mantenimiento S/ 140");
+  igual((await sec("Cocina de inducción").locator(".cat-modelo figcaption").allInnerTexts()).map((x) => x.replace(/\s+/g, " ").trim()),
+    ["IC-450 La más reciente", "IC-350 Generación intermedia", "IC-400 Antes de la IC-350", "SW-3000 Modelo antiguo"], "cocina: las fotos de los cuatro modelos, con su nombre");
+  await sec("Cocina de inducción").scrollIntoViewIfNeeded(); await p.waitForTimeout(400);
+  const mods = await sec("Cocina de inducción").locator(".cat-modelo img").evaluateAll((xs) => xs.map((x) => { const r = x.getBoundingClientRect(); return { w: x.naturalWidth, x: Math.round(r.left), y: Math.round(r.top), a: Math.round(r.width) }; }));
+  ok(mods.length === 4 && mods.every((m) => m.w === 400), "las cuatro fotos cargan");
+  ok(mods[0].y === mods[1].y && mods[2].y === mods[3].y && mods[2].y > mods[0].y && mods[0].a >= 150, "en el celular van de dos en dos → " + JSON.stringify(mods));
+  ok((await sec("Cocina de inducción").locator(".cat-modelos").evaluate((e) => e.getBoundingClientRect().top)) < (await sec("Cocina de inducción").locator(".fila").first().evaluate((e) => e.getBoundingClientRect().top)), "entre el título y el mantenimiento");
+  await s.foto("servicios-cocinas");
 
   titulo("Pulido: una fila por pieza, un precio por serie");
   await s.filtro("Pulido");
