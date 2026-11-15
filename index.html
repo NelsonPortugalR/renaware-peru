@@ -959,6 +959,8 @@
             : h("span", { key: v.nombre, className: "var-btn no" }, h("small", null, v.nombre), h("em", null, "No se hace"));
         }))));
   };
+  // Si la sección trae su rejilla de fotos (cot_grupos.fotos), sus filas van sin foto: una foto suelta en una fila haría
+  // pensar que ese precio es solo para ese modelo (el mantenimiento de cocina es el mismo para los cuatro)
   var SeccionCatalogo = ({ s, conFamilia, etiquetaLista, onOpen, imageOverrides }) => h("section", { className: "cat-sec", id: s.key },
     h("div", { className: "cat-sec-head" },
       conFamilia && s.familia && h("span", { className: "cat-sec-fam" }, s.familia),
@@ -970,11 +972,11 @@
       (m.nombre || m.nota) && h("figcaption", null, m.nombre && h("strong", null, m.nombre), m.nota && h("span", null, m.nota))))),
     s.bloques.map((b) => h("div", { className: "cat-blo", key: b.sub || "_" },
       (b.sub || b.foto) && h("div", { className: "cat-blo-head" },
-        b.foto && h("div", { className: "cat-blo-img" }, h("img", { src: imgSrc(b.foto, imageOverrides), alt: "", loading: "lazy", onError: (e) => { e.target.parentNode.style.display = "none"; } })),
+        b.foto && !(s.fotos && s.fotos.length) && h("div", { className: "cat-blo-img" }, h("img", { src: imgSrc(b.foto, imageOverrides), alt: "", loading: "lazy", onError: (e) => { e.target.parentNode.style.display = "none"; } })),
         b.sub && h("h3", null, b.sub)),
       h("div", { className: "filas" }, b.filas.map((f) => f.tipo === "var"
-        ? h(FilaVariantes, { key: f.key, fila: f, variantes: s.variantes, sinFoto: !!b.foto, onOpen, imageOverrides })
-        : h(FilaCatalogo, { key: f.key, p: f.p, externo: f.externo, listaNombre: f.externo ? etiquetaLista(f.p.lista) : "", sinFoto: !!b.foto, onOpen, imageOverrides }))))),
+        ? h(FilaVariantes, { key: f.key, fila: f, variantes: s.variantes, sinFoto: !!b.foto || !!(s.fotos && s.fotos.length), onOpen, imageOverrides })
+        : h(FilaCatalogo, { key: f.key, p: f.p, externo: f.externo, listaNombre: f.externo ? etiquetaLista(f.p.lista) : "", sinFoto: !!b.foto || !!(s.fotos && s.fotos.length), onOpen, imageOverrides }))))),
     s.sinPrecio.length > 0 && h("div", { className: "cat-sp" }, s.sinPrecio.map((x) => h("div", { key: x.id, className: "cat-sp-fila" },
       h("span", null, h("strong", null, x.name), x.detalle && h("small", null, x.detalle)),
       h("em", null, x.precioTexto)))));

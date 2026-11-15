@@ -264,6 +264,10 @@ async function servicios() {
   ok(mods.length === 4 && mods.every((m) => m.w === 400), "las cuatro fotos cargan");
   ok(mods[0].y === mods[1].y && mods[2].y === mods[3].y && mods[2].y > mods[0].y && mods[0].a >= 150, "en el celular van de dos en dos → " + JSON.stringify(mods));
   ok((await sec("Cocina de inducción").locator(".cat-modelos").evaluate((e) => e.getBoundingClientRect().top)) < (await sec("Cocina de inducción").locator(".fila").first().evaluate((e) => e.getBoundingClientRect().top)), "entre el título y el mantenimiento");
+  igual(await sec("Cocina de inducción").locator(".fila .fila-img").count(), 0, "la fila de S/ 140 va sin foto: el precio es el mismo para los cuatro modelos");
+  await sec("Cocina de inducción").locator(".fila").first().click(); await p.waitForTimeout(400);
+  ok(/sv-coc-modelos\.webp$/.test(await p.locator(".modal-box .modal-img img").first().getAttribute("src")), "y su ficha muestra los cuatro modelos juntos");
+  await s.cerrarFicha();
   await s.foto("servicios-cocinas");
 
   titulo("Pulido: una fila por pieza, un precio por serie");

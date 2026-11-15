@@ -10,3 +10,8 @@ update public.cot_grupos set fotos = '[
   {"foto": "sv-coc-sw-3000", "nombre": "SW-3000", "nota": "Modelo antiguo"}
 ]'::jsonb, updated_at = now()
 where lista_id = 'servicios' and grupo = 'Cocina de inducción';
+
+-- 15/11/2026 (después) · La fila del mantenimiento (S/ 140) ya no muestra la foto de la IC-450: parecía que los
+-- otros modelos costaban distinto. En la lista, una sección con rejilla de fotos pone sus filas sin foto (lo hace
+-- la página); en la ficha del mantenimiento va la foto de los cuatro modelos juntos (promociones/sv-coc-modelos.webp).
+update public.cot_servicios set foto = 'sv-coc-modelos' where codigo = 'sv-coc-mantenimiento';
