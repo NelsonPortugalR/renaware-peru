@@ -657,9 +657,37 @@ async function tutorial() {
   await d.fin("tutorial en escritorio");
 }
 
+/* ------------------------------------------------------------------ 10. compartir video y cotización */
+async function compartir() {
+  const UA = {
+    iPhone: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1",
+    Android: "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36"
+  };
+  for (const [quien, ua] of Object.entries(UA)) {
+    titulo("Compartir el video y la cotización (" + quien + ")");
+    const s = await sesion({ movil: true, ua, cambiar: sinBono });
+    const p = s.pagina;
+    // la hoja de compartir del teléfono, de mentira: anota lo que la página le pasa
+    await p.evaluate(() => {
+      window.__compartido = [];
+      Object.defineProperty(navigator, "canShare", { configurable: true, value: () => true });
+      Object.defineProperty(navigator, "share", { configurable: true, value: async (d) => { window.__compartido.push({ archivos: (d.files || []).map((f) => f.name), texto: d.text || null, titulo: d.title || null }); } });
+    });
+    await p.locator(".tile .tile-btn").first().click(); await p.waitForTimeout(500);
+    await p.locator(".modal-box .vid-wa").click(); await p.waitForTimeout(700);
+    await p.locator(".modal-box .share-quote-btn").click(); await p.waitForTimeout(900);
+    const c = await p.evaluate(() => window.__compartido);
+    igual(c.map((x) => x.archivos.length), [1, 1], quien + ": el video y la cotización salen como un archivo cada uno");
+    ok(/\.mp4$/.test((c[0] || { archivos: [""] }).archivos[0]) && /^cotizacion-.*\.png$/.test((c[1] || { archivos: [""] }).archivos[0]), quien + ": el video .mp4 y la cotización .png → " + JSON.stringify(c.map((x) => x.archivos)));
+    if (quien === "iPhone") igual(c.map((x) => [x.texto, x.titulo]), [[null, null], [null, null]], "iPhone: solo el archivo, sin texto (WhatsApp lo mandaba dos veces)");
+    else ok(/^Mira este producto: /.test(c[0] && c[0].texto) && /^Cotizacion - /.test(c[1] && c[1].texto), "Android: el texto va como leyenda → " + JSON.stringify(c.map((x) => x.texto)));
+    await s.fin("compartir en " + quien);
+  }
+}
+
 (async () => {
   const solo = process.env.SOLO || "";
-  const todas = { ingreso, vistaAsesor, ganancia, repuestos, servicios, parteAlta, admin, respaldo, tutorial };
+  const todas = { ingreso, vistaAsesor, ganancia, repuestos, servicios, parteAlta, admin, respaldo, tutorial, compartir };
   for (const [n, fn] of Object.entries(todas)) {
     if (solo && solo.split(",").indexOf(n) < 0) continue;
     try { await fn(); } catch (e) { fallan++; console.log("  ✗ " + n + " se cayó: " + String(e.message || e).split("\n")[0]); }
