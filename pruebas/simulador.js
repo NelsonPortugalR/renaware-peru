@@ -32,7 +32,10 @@ window.supabase = { createClient: function () {
       return R(t === "site_config" ? { data: S.config || M.config } : null); } }; } }; } }; },
     rpc: function (n, a) {
       a = a || {}; S.rpc.push([n, a]);
-      if (n === "asesor_sesion_valida") return R(S.sesiones[a.p_token] ? Object.assign({ ok: true }, S.sesiones[a.p_token]) : { ok: false });
+      if (n === "asesor_sesion_valida") {
+        S.validas = (S.validas || 0) + 1;
+        if (M.__fallaValida && (M.__fallaValida < 0 || S.validas <= M.__fallaValida)) return E("TypeError: Failed to fetch");   // sin red, o la base no responde
+        return R(S.sesiones[a.p_token] ? Object.assign({ ok: true }, S.sesiones[a.p_token]) : { ok: false }); }
       if (n === "asesor_login") { var quien = { "40123456": { nombre: "Nelson", celular: "987654321", completa: true }, "45678912": { nombre: "Rosa", celular: "912345678", completa: false } }[String(a.p_celular)]; if (!quien) return E("Ese DNI no esta habilitado"); S.sesiones["tok-asesor"] = quien; return R(Object.assign({ token: "tok-asesor" }, quien)); }
       if (n === "registrar_evento") return R(true);
       if (n === "admin_login") { if (a.p_clave !== "${CLAVE_ADMIN}") return E("Clave incorrecta"); S.admin["tok-admin"] = 1; return R("tok-admin"); }
@@ -49,7 +52,8 @@ window.supabase = { createClient: function () {
         if (a.p_precio_asesor != null && !(a.p_precio_asesor > 0 && a.p_precio_asesor <= a.p_precio)) return E("El precio de asesor no puede ser mayor que el del cliente");
         s.precio = a.p_precio; s.precio_asesor = a.p_precio_asesor == null ? null : a.p_precio_asesor;
         return R({ codigo: s.codigo, precio: s.precio, precio_asesor: s.precio_asesor }); }
-      if (n === "admin_asesores" || n === "admin_actividad") return esAdmin(a.p_token) ? R([]) : E("Sesion invalida");
+      if (n === "admin_asesores") return esAdmin(a.p_token) ? R([]) : E("Sesion invalida");
+      if (n === "admin_actividad") return esAdmin(a.p_token) ? R(M.actividad || []) : E("Sesion invalida");
       return R(null);
     },
     storage: { from: function (b) { return {
@@ -61,8 +65,10 @@ window.supabase = { createClient: function () {
 /* o.dir: carpeta del portal · o.mock: datos (los de datos.json) · o.movil: celular de 390 px ·
    o.ruta: "/admin" · o.sinSesion: arranca sin sesión de asesor · o.reloj: fecha que ve la página ·
    o.fotos: carpetas donde buscar las fotos que la página pide al Storage ·
-   o.tour: deja que arranque solo el tutorial de la primera vez (si no, se da por visto) ·
-   o.ua: el navegador que dice ser (para probar lo que cambia en iPhone) */
+   o.token: la sesión guardada en el equipo (por defecto, la de Nelson) · o.recordada: lo que el equipo recuerda de esa sesión ·
+   o.fallaValida: cuántas veces falla la validación de la sesión, como sin red (-1: siempre) ·
+   o.ua: el navegador que dice ser (para probar lo que cambia en iPhone) ·
+   o.video: { bytes, demora, falla } del video de mentira que sirve el Storage */
 async function abrir(o) {
   o = o || {};
   const dir = o.dir || path.join(__dirname, "..");
@@ -76,9 +82,15 @@ async function abrir(o) {
     isMobile: !!o.movil, hasTouch: !!o.movil, locale: "es-PE", timezoneId: "America/Lima",
     ...(o.ua ? { userAgent: o.ua } : {})
   });
-  const registro = { escrituras: [], pedidos: [], errores: [] };
-  await ctx.addInitScript((m) => { window.__MOCK = m; try { if (m.__sesion !== false) localStorage.setItem("rw_sesion_v1", "tok-asesor"); if (!m.__tour) localStorage.setItem("rw_tour_v1", "1"); } catch (e) {} },
-    Object.assign({}, mock, { __sesion: o.sinSesion ? false : true, __tour: !!o.tour }));
+  const registro = { escrituras: [], pedidos: [], errores: [], videos: [] };
+  await ctx.addInitScript((m) => { window.__MOCK = m; try {
+      if (m.__sesion !== false && !sessionStorage.getItem("sim_listo")) {   // solo al abrir: al recargar queda lo que la página haya guardado o borrado
+        localStorage.setItem("rw_sesion_v1", m.__token || "tok-asesor");
+        if (m.__recordada) localStorage.setItem("rw_sesion_datos_v1", JSON.stringify(m.__recordada));
+      }
+      sessionStorage.setItem("sim_listo", "1");
+    } catch (e) {} },
+    Object.assign({}, mock, { __sesion: o.sinSesion ? false : true, __token: o.token || "", __recordada: o.recordada || null, __fallaValida: o.fallaValida || 0 }));
   if (o.reloj) await ctx.addInitScript((t) => { const D = Date, d0 = D.now(); const corr = t - d0;
     window.Date = class extends D { constructor(...a) { if (a.length) super(...a); else super(D.now() + corr); } static now() { return D.now() + corr; } }; }, Date.parse(o.reloj));
   await ctx.route("**/*", async (ruta) => {
@@ -96,8 +108,6 @@ async function abrir(o) {
     }
     if (u.hostname === "unpkg.com") return archivo(/react-dom/.test(u.pathname) ? reactDom : react);
     if (u.hostname === "cdn.jsdelivr.net" && /supabase/.test(u.pathname)) return ruta.fulfill({ status: 200, contentType: "text/javascript", body: SB_FALSO });
-    if (u.hostname === "cdn.jsdelivr.net") return ruta.fulfill({ status: 200, contentType: "text/javascript",
-      body: "window.htmlToImage={toPng:async()=>'data:image/png;base64,iVBORw0KGgo=',toCanvas:async()=>{const c=document.createElement('canvas');c.width=600;c.height=800;return c}};" });
     if (u.hostname === "fonts.googleapis.com") {
       const css = fuente ? [300, 500, 600, 700, 800].map((w) => `@font-face{font-family:'DM Sans';font-weight:${w};font-style:normal;src:url(https://fonts.gstatic.com/dm-sans-latin-${w}-normal.woff2) format('woff2')}`).join("") : "";
       return ruta.fulfill({ status: 200, contentType: "text/css", headers: { "access-control-allow-origin": "*" }, body: css });
@@ -116,6 +126,13 @@ async function abrir(o) {
       if (tabla === "cot_servicios") return mock.servicios ? json(mock.servicios.filter((s) => s.activo !== false)) : falta();
       if (tabla === "cot_grupos") return mock.grupos ? json(mock.grupos) : falta();
       return json([]);
+    }
+    if (u.origin === SB && u.pathname.startsWith("/storage/") && /\/videos\//.test(u.pathname)) {   // un video de mentira, del tamaño y con la demora que pida la prueba
+      const vd = o.video || {};
+      registro.videos.push(path.basename(u.pathname));
+      if (vd.falla) return ruta.fulfill({ status: 500, body: "" });
+      if (vd.demora) await new Promise((r) => setTimeout(r, vd.demora));
+      return ruta.fulfill({ status: 200, contentType: "video/mp4", headers: { "access-control-allow-origin": "*" }, body: Buffer.alloc(vd.bytes || 200000, 7) });
     }
     if (u.origin === SB && u.pathname.startsWith("/storage/")) {
       const cod = path.basename(u.pathname).split("-")[0];

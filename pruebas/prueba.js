@@ -5,7 +5,10 @@
    Recorre: ingreso, listas, puntos y ganancia, Repuestos como catálogo,
    Servicios (soldadura, limpieza, pulido en dos variantes, cocina), fichas,
    cotización, buscador, panel de administración, el comportamiento de la
-   parte alta (listas, barra pegada, salto al buscar) y el tutorial.
+   parte alta (listas, barra pegada, salto al buscar), el tutorial, la inicial
+   y el crédito, la cotización (contado y crédito, compartir y copiar), el envío
+   del video, la sesión que se queda y el registro de uso.
+   Solo una parte:  SOLO=inicial,cotizacion node pruebas/prueba.js
    Uso:  node pruebas/prueba.js [carpeta-de-capturas]
    Los datos de datos.json tienen precios de asesor, puntos y valores
    comisionables inventados (el repositorio es público). */
@@ -41,6 +44,19 @@ async function sesion(o) {
   s.pestana = async (t) => { await p.locator(".mode-tab", { hasText: t }).click(); await p.waitForTimeout(200); };
   s.fila = (t) => p.locator(".fila", { hasText: t }).first();
   s.rpc = (n) => p.evaluate((q) => (window.__SIM ? window.__SIM.rpc : []).filter((x) => x[0] === q).map((x) => x[1]), n);
+  s.eventos = async (tipo) => (await s.rpc("registrar_evento")).filter((x) => !tipo || x.p_tipo === tipo).map((x) => Object.assign({ tipo: x.p_tipo }, x.p_detalle));
+  /* Lo que dice la cotización que la página dejó armada: la imagen se dibuja en un lienzo, así que aquí se revisan sus
+     datos (window.__cotizacion). Tras cada cambio la página la rearma con unos 400 ms de retraso: se espera a que cumpla `cuando`.
+     Los montos traen un espacio duro entre «S/» y el número: aquí se cambia por uno normal. */
+  s.cot = async (cuando) => {
+    let m = null;
+    for (let k = 0; k < 40; k++) {
+      m = await p.evaluate(() => window.__cotizacion ? JSON.parse(JSON.stringify(window.__cotizacion).replace(/ /g, " ")) : null);
+      if (m && (!cuando || cuando(m))) return m;
+      await p.waitForTimeout(150);
+    }
+    return cuando ? null : m;
+  };
   s.foto = async (n, full) => { if (CAPTURAS) { fs.mkdirSync(CAPTURAS, { recursive: true }); await p.screenshot({ path: path.join(CAPTURAS, n + ".png"), fullPage: !!full }); } };
   s.fin = async (n) => {
     igual(s.registro.escrituras, [], n + ": la página no escribe directo a ninguna tabla");
@@ -72,6 +88,10 @@ async function ingreso() {
   igual(await s.textos(".lista-btn .lista-nom"), ["Tienda en Línea", "Lista General", "Compartir", "Repuestos", "Servicios"], "con vista completa, las cinco listas, con Servicios al final");
   igual(await s.textos(".lista-btn.esp .lista-nom"), ["Compartir"], "solo el especial va resaltado");
   igual(await s.texto(".lista-btn.esp .lista-esp"), "Especial hasta 11 nov", "y dice que es especial y hasta cuándo");
+  const esp = await p.evaluate(() => { const b = document.querySelector(".lista-btn.esp"), e = b.querySelector(".lista-esp b"), f = b.querySelector(".lista-esp i"), cb = getComputedStyle(b), ce = getComputedStyle(e);
+    return { fondo: cb.backgroundImage !== "none", borde: cb.borderTopColor, sello: ce.backgroundColor, letra: ce.color, mayus: ce.textTransform, fecha: parseFloat(getComputedStyle(f).fontSize) }; });
+  ok(esp.fondo && esp.sello === "rgb(194, 65, 12)" && esp.letra === "rgb(255, 255, 255)" && esp.mayus === "uppercase" && esp.fecha >= 12, "el especial se nota: fondo naranja, sello ESPECIAL lleno y la fecha en letra legible → " + JSON.stringify(esp));
+  igual(await p.evaluate(() => { try { return JSON.parse(localStorage.getItem("rw_sesion_datos_v1")).nombre; } catch (e) { return ""; } }), "Nelson", "el equipo recuerda quién entró, para no volver a pedir el DNI");
   ok(await s.cuenta(".accion-btn") === 2, "con Simulador de puntos y Buscador maestro");
   const pedidos = Array.from(new Set(s.registro.pedidos)).sort();
   igual(pedidos, ["cot_grupos", "cot_servicios", "factores_credito", "piezas", "productos", "reglas_credito", "v_listas_vigentes"], "lee solo catálogos");
@@ -136,7 +156,8 @@ async function ganancia() {
   igual(await s.textos(".tab-btn"), ["Contado", "Crédito"], "contado y crédito");
   await p.locator(".tab-btn", { hasText: "Crédito" }).click(); await p.waitForTimeout(200);
   ok(await s.cuenta(".inst-btn") >= 3, "con sus cuotas");
-  ok(/N° 1/.test(await s.texto(".qc-code")), "la cotización conserva código y número");
+  const cg = await s.cot((m) => /N° 1$/.test(m.codigo));
+  igual(cg && cg.codigo, "Cod. 000158 - N° 1", "la cotización conserva código y número");
   await s.cerrarFicha();
   await s.lista("Tienda en Línea");
   await p.locator(".tile-btn").first().click(); await p.waitForTimeout(350);
@@ -181,6 +202,27 @@ async function repuestos() {
   ok(await s.cuenta(".accion-btn") === 1, "sin simulador de puntos (no generan puntos)");
   igual(await p.locator(".search-bar input").getAttribute("placeholder"), "Buscar repuesto: nombre o código…", "el buscador dice qué busca");
 
+  titulo("Repuestos: la foto del equipo en cada sección");
+  const secR = (t) => p.locator(".cat-sec", { has: p.locator("h2", { hasText: t }) }).first();
+  igual([await s.cuenta(".cat-sec-head.con-equipo .cat-eq-foto"), await s.cuenta(".cat-equipos")], [8, 4], "ocho grupos con la foto de su equipo al costado del título y cuatro con sus modelos en fila");
+  const fotosEq = DATOS.grupos.flatMap((g) => g.equipo || []);
+  ok(fotosEq.length === 17 && fotosEq.every((m) => fs.existsSync(path.join(RAIZ, "promociones", m.foto + ".webp"))), "las 17 fotos de equipos están en promociones/");
+  const asas = await secR(/^Asas y perillas$/).evaluate((sec) => { const f = sec.querySelector(".cat-eq-foto"), t = sec.querySelector(".cat-sec-tit"), a = f.getBoundingClientRect(), b = t.getBoundingClientRect();
+    return { carga: f.naturalWidth > 0, clase: f.className.trim(), w: Math.round(a.width), h: Math.round(a.height), alCostado: a.left >= b.left + 100 && a.right <= sec.getBoundingClientRect().right && a.top < b.bottom && a.bottom > b.top, alt: f.alt }; });
+  ok(asas.carga && asas.clase === "cat-eq-foto ancha" && asas.w === 150 && asas.h === 92 && asas.alCostado && asas.alt === "Asas y perillas", "Asas y perillas: su foto carga, grande y al costado del título → " + JSON.stringify(asas));
+  ok(await secR(/^Asas y perillas$/).locator(".fila .fila-img").count() > 0, "y las piezas conservan su propia foto");
+  const pieza = (await s.cajas(".cat-sec .fila .fila-img"))[0];
+  igual([pieza.w, pieza.h], [112, 86], "la foto de cada pieza es más grande que antes (era de 96 × 74)");
+  igual(await secR(/^Nutrex Juicer$/).locator(".cat-equipos.n2 .cat-equipo figcaption").allInnerTexts(), ["Modelo nuevo", "Modelo antiguo"], "Nutrex Juicer: el modelo nuevo y el antiguo, cada uno con su nombre");
+  igual(await secR(/^Purificador de aire$/).locator(".cat-equipos.n3 .cat-equipo figcaption").allInnerTexts(), ["Actual: Aero Quattro+ UV", "2da generación: Aero Quattro+", "1ra generación: Aero Quattro"], "Purificador de aire: sus tres generaciones");
+  await secR(/^Nutrex Juicer$/).scrollIntoViewIfNeeded(); await p.waitForTimeout(450);
+  const nj = await secR(/^Nutrex Juicer$/).evaluate((sec) => { const g = sec.querySelector(".cat-equipos").getBoundingClientRect(), t = sec.querySelector(".cat-sec-head").getBoundingClientRect(), f = sec.querySelector(".fila").getBoundingClientRect();
+    return { cargan: Array.from(sec.querySelectorAll(".cat-equipo img")).map((x) => x.naturalWidth > 0), entre: g.top >= t.bottom - 1 && g.bottom <= f.top + 1, alto: Math.round(sec.querySelector(".cat-equipo img").getBoundingClientRect().height) }; });
+  ok(nj.cargan.every(Boolean) && nj.cargan.length === 2 && nj.entre && nj.alto === 128, "sus fotos cargan y van entre el título y las piezas → " + JSON.stringify(nj));
+  igual(await secR(/^Door openers$/).locator(".cat-eq-foto, .cat-equipos").count(), 0, "Door openers, que no tiene foto de equipo, queda como antes");
+  await s.foto("repuestos-equipo");
+  await p.evaluate(() => window.scrollTo(0, 0)); await p.waitForTimeout(250);
+
   const ctu = p.locator(".cat-sec", { has: p.locator("h2", { hasText: "Aqua Nano CTU-500" }) });
   igual(await ctu.locator(".cat-sec-fam").innerText(), "FILTROS DE AGUA", "cada grupo lleva su familia");
   igual(await ctu.locator(".cat-blo-head h3").allInnerTexts(), ["CARTUCHOS DE CAMBIO", "REPUESTOS DEL EQUIPO"], "primero los cartuchos, luego las piezas");
@@ -205,7 +247,9 @@ async function repuestos() {
   ok(/El pedido de repuestos lo ingresa la oficina/.test(await s.texto(".cat-pie")), "y la regla de la lista");
   await s.pestana("Asesor");
   igual(await s.textos(".auto-ticket .tk-line, .auto-ticket .tk-total"), ["Precio al clienteS/ 24", "Tu gananciaS/ 6", "PRECIO ASESORS/ 18"], "precio de asesor y ganancia");
-  ok(/Precio Asesor/.test(await s.texto(".qc-mode")) && /Cod\. 30104$/.test(await s.texto(".qc-code")) && await s.cuenta(".qc-pts") === 0, "la cotización lo dice igual y sin puntos");
+  const cr = await s.cot((m) => m.chip === "Precio Asesor" && /30104/.test(m.codigo));
+  igual(cr && [cr.codigo, cr.puntos, cr.bloques.length], ["Cod. 30104", null, 1], "la cotización lo dice igual: con su código, sin cuotas y sin puntos");
+  igual(cr && cr.bloques[0].filas.map((f) => f.t + " " + f.v).concat(cr.bloques[0].total.t + " " + cr.bloques[0].total.v), ["Precio al cliente S/ 24", "Tu ganancia S/ 6", "Precio asesor S/ 18"], "con el precio al cliente, la ganancia y el precio de asesor");
   await s.cerrarFicha();
   await s.fila("Cód. 30314").click(); await p.waitForTimeout(350);
   await s.pestana("Asesor");
@@ -305,11 +349,16 @@ async function servicios() {
   ok(/^La serie nueva\. Precio por pieza, con o sin tapa/.test(await s.texto(".modal-info .info-banner")), "con la nota de la serie y del pulido");
   await s.pestana("Asesor");
   igual(await s.textos(".auto-ticket .tk-line, .auto-ticket .tk-total"), ["Precio al clienteS/ 170", "Tu gananciaS/ 25", "PRECIO ASESORS/ 145"], "precio de asesor del pulido");
-  igual(await s.texto(".qc-code"), "Pulido · Zylstra · por pieza", "la cotización dice serie y unidad");
-  igual(await s.textos(".qc-small .qc-srow span:first-child, .qc-bigtotal span"), ["Precio al cliente", "Tu ganancia", "Precio asesor"], "y los mismos rótulos");
-  igual(await s.cuenta(".qc-pts"), 0, "sin puntos");
-  await p.locator(".share-quote-btn").click(); await p.waitForTimeout(600);
+  const cs = await s.cot((m) => m.chip === "Precio Asesor" && /Zylstra/.test(m.codigo));
+  igual(cs && cs.codigo, "Pulido · Zylstra · por pieza", "la cotización dice serie y unidad");
+  igual(cs && cs.bloques[0].filas.map((f) => f.t).concat(cs.bloques[0].total.t), ["Precio al cliente", "Tu ganancia", "Precio asesor"], "y los mismos rótulos");
+  igual(cs && [cs.puntos, cs.bloques.length], [null, 1], "sin puntos y sin cuotas");
+  await s.pestana("Cliente");
+  const cc = await s.cot((m) => m.chip === "Precio Cliente" && /Zylstra/.test(m.codigo));
+  igual(cc && cc.bloques[0].total, { t: "Precio al cliente", v: "S/ 170", nota: "por pieza" }, "para el cliente: el precio y su unidad");
+  await p.locator(".share-quote-btn").click(); await p.waitForTimeout(700);
   igual(await s.cuenta(".cap-err"), 0, "compartir la cotización no da error");
+  ok(/se guardó en tu equipo/.test(await s.texto(".cap-ok")), "y donde el navegador no comparte archivos, la imagen se descarga y lo dice → " + await s.texto(".cap-ok"));
   await s.cerrarFicha();
 
   titulo("Fichas de servicios");
@@ -359,7 +408,7 @@ async function parteAlta() {
   igual(barra.y, menu.aba, "y pegados debajo, el buscador y los filtros");
   ok((await s.cajas(".lista-btn")).every((x) => x.y >= 0 && x.aba <= menu.aba), "con las cinco listas a la vista");
   ok((await s.cajas(".header"))[0].aba <= 0 && (await s.cajas(".nav-medio"))[0].aba <= menu.aba, "la franja del título y el aviso se van con la página");
-  ok(barra.aba <= 200 && barra.h <= 110, "lo fijo ocupa poco: " + barra.aba + " px de 844");
+  ok(barra.aba <= 206 && barra.h <= 90, "lo fijo ocupa poco, aun con el especial más visible y la letra más grande: " + barra.aba + " px de 844");
   igual(await s.cuenta(".header-lista"), 0, "ya no hace falta el botón de la lista en la cabecera");
   await s.filtro("Ollas a presión");
   igual(await s.scrollY(), seVa, "al cambiar de filtro el contenido arranca justo debajo de lo fijo");
@@ -393,13 +442,53 @@ async function parteAlta() {
   ok(f.length === 2 && f[0].y === f[1].y, "en escritorio las filas van en columnas");
   await d.lista("Repuestos");
   igual(await d.cuenta(".bonus-pill"), 0, "ni en Repuestos");
+  const eqD = (await d.cajas(".cat-sec-head.con-equipo .cat-eq-foto"))[0];
+  ok(eqD.w >= 180 && eqD.h >= 110, "en escritorio la foto del equipo es más grande → " + eqD.w + " × " + eqD.h);
   await d.fin("escritorio");
+
+  titulo("Menú con dos especiales en un celular chico (360 × 640)");
+  const dos = (m) => { sinBono(m); m.listas.push(Object.assign({}, m.listas.find((l) => l.id === "compartir"), { id: "navidad-magica", nombre: "Especiales Navidad Mágica", vigente_hasta: "2026-12-23" })); };
+  for (const completa of [true, false]) {
+    const e = await sesion({ movil: true, viewport: { width: 360, height: 640 }, cambiar: (m) => { dos(m); m.completa = completa; } });
+    const quien = completa ? "vista completa" : "asesor";
+    igual(await e.textos(".lista-btn.esp .lista-esp"), ["Especial hasta 23 dic", "Especial hasta 11 nov"], quien + ": los dos especiales, el que dura más primero");
+    const bs = await e.pagina.evaluate(() => Array.from(document.querySelectorAll(".lista-btn")).map((b) => { const n = b.querySelector(".lista-nom"), r = b.getBoundingClientRect(), i = b.querySelector(".lista-esp i");
+      return { nombre: n.textContent, renglones: Math.round(n.getBoundingClientRect().height / parseFloat(getComputedStyle(n).lineHeight)), alto: Math.round(r.height), letra: parseFloat(getComputedStyle(n).fontSize), fecha: i ? parseFloat(getComputedStyle(i).fontSize) : 99, sale: n.scrollWidth > b.clientWidth }; }));
+    ok(bs.every((b) => b.renglones === 1 && !b.sale), quien + ": cada nombre entra en un renglón → " + JSON.stringify(bs.filter((b) => b.renglones !== 1 || b.sale)));
+    ok(bs.every((b) => b.alto <= 62 && b.letra >= 12.5 && b.fecha >= 12), quien + ": botones bajos y con letra legible → " + JSON.stringify(bs.map((b) => [b.alto, b.letra])));
+    await e.lista("Repuestos");
+    await e.pagina.evaluate(() => window.scrollTo(0, 1500)); await e.pagina.waitForTimeout(300);
+    const fijo = (await e.cajas(".sticky-nav"))[0].aba;
+    ok(fijo <= (completa ? 226 : 206), quien + ": lo fijo ocupa " + fijo + " px de 640 (antes, " + (completa ? 230 : 207) + ")");
+    await e.foto("menu-dos-especiales-" + (completa ? "completa" : "asesor"));
+    await e.fin("menú con dos especiales, " + quien);
+  }
 }
 
 /* ------------------------------------------------------------------ 6. panel de administración */
+const ACTIVIDAD = {
+  desde: "2026-11-13T05:00:00Z",
+  totales: { personas: 2, visitas: 5, minutos: 63, fichas: 20, cotizaciones: 6, videos: 1 },
+  resumen: [
+    { celular: "45678912", nombre: "Rosa Quispe", visitas: 3, dias: 2, minutos: 41, fichas: 12, cotizaciones: 4, videos: 1, acciones: 30, sesiones: 1, ultima: "2026-11-20T15:10:00Z", dispositivo: "Celular", so: "Android", navegador: "Chrome", pantalla: "360x800", zona: "America/Lima", pais: "PE" },
+    { celular: "40123456", nombre: "", visitas: 2, dias: 1, minutos: 22, fichas: 8, cotizaciones: 2, videos: 0, acciones: 15, sesiones: 1, ultima: "2026-11-19T22:00:00Z", dispositivo: "Celular", so: "iOS", navegador: "Safari", pantalla: "390x844", zona: "America/Lima", pais: "PE" }
+  ],
+  por_dia: [{ dia: "2026-11-20", personas: 2, minutos: 40, fichas: 14, cotizaciones: 5, videos: 1 }, { dia: "2026-11-19", personas: 1, minutos: 23, fichas: 6, cotizaciones: 1, videos: 0 }],
+  equipos: [{ so: "Android", n: 1 }, { so: "iOS", n: 1 }],
+  por_tipo: [{ tipo: "ver_producto", n: 20 }, { tipo: "cotizacion", n: 7 }, { tipo: "buscar", n: 4 }],
+  top_productos: [{ producto: "JUEGO GOURMET SERIE ZYLSTRA", n: 9 }],
+  busquedas: [{ texto: "olla", n: 3, sin: 0 }, { texto: "tetera", n: 1, sin: 1 }],
+  fallas: [{ cuando: "2026-11-20T15:00:00Z", celular: "45678912", nombre: "Rosa Quispe", tipo: "video", detalle: { accion: "enviar", resultado: "error", paso: "bajar", error: "TypeError: Failed to fetch", nombre: "Olla a presión" }, so: "Android", navegador: "Chrome" }],
+  ultimos: [
+    { cuando: "2026-11-20T15:10:00Z", celular: "45678912", nombre: "Rosa Quispe", tipo: "cotizacion", detalle: { via: "compartir", resultado: "ok", nombre: "JUEGO GOURMET SERIE ZYLSTRA", modo: "autocompra" } },
+    { cuando: "2026-11-20T15:05:00Z", celular: "45678912", nombre: "Rosa Quispe", tipo: "video", detalle: { accion: "enviar", resultado: "otro_toque", nombre: "Olla a presión", mb: 12.4, ms: 9000 } },
+    { cuando: "2026-11-20T15:01:00Z", celular: "45678912", nombre: "Rosa Quispe", tipo: "buscar", detalle: { texto: "tetera", resultados: 0 } },
+    { cuando: "2026-11-19T22:00:00Z", celular: "40123456", nombre: "", tipo: "visita", detalle: { so: "iOS" } }
+  ]
+};
 async function admin() {
   titulo("Admin: precios de servicios y de repuestos");
-  const s = await sesion({ viewport: { width: 900, height: 900 }, ruta: "/admin", sinSesion: true, cambiar: sinBono });
+  const s = await sesion({ viewport: { width: 900, height: 900 }, ruta: "/admin", sinSesion: true, cambiar: (m) => { sinBono(m); m.actividad = ACTIVIDAD; } });
   const p = s.pagina;
   await p.locator(".admin-login input").fill("mala"); await p.locator(".admin-login .admin-btn-main").click(); await p.waitForTimeout(250);
   ok(/Clave incorrecta/.test(await s.texto(".admin-login-err")), "con clave mala no entra");
@@ -434,6 +523,27 @@ async function admin() {
   await precio.fill("26"); await precio.blur(); await p.waitForTimeout(300);
   igual(await s.rpc("set_precio_repuesto_tok"), [{ p_token: "tok-admin", p_codigo: "30104", p_precio: 26 }], "y su precio de cliente se cambia como antes");
   await s.foto("admin-servicios");
+
+  titulo("Admin: Actividad (quién entra, desde dónde, cuánto y qué hace)");
+  await p.locator(".admin-tab", { hasText: "Actividad" }).click(); await p.waitForTimeout(400);
+  igual(await s.rpc("admin_actividad"), [{ p_token: "tok-admin", p_dias: 7 }], "pide la actividad de los últimos 7 días con la sesión de admin");
+  igual(await s.textos(".act-total"), ["2Personas", "5Visitas", "63Minutos de uso", "20Fichas abiertas", "6Cotizaciones enviadas", "1Videos enviados"], "arriba, los totales del período");
+  igual(await s.textos(".act-persona strong"), ["Rosa Quispe", "40123456"], "una tarjeta por persona (si no se sabe el nombre, su DNI)");
+  const per = await s.textos(".act-persona small");
+  ok(/^Celular · Android · Chrome · última vez: /.test(per[0]) && /^Celular · iPhone · Safari · última vez: /.test(per[1]), "con su equipo, su navegador y cuándo entró por última vez → " + per.join(" | "));
+  igual(await p.locator(".act-persona").first().locator(".act-datos span").allInnerTexts(), ["3 visitas", "41 min", "12 fichas", "4 cotizaciones", "1 video"], "y cuánto usó: visitas, minutos, fichas, cotizaciones y videos");
+  const act = await p.evaluate(() => { const r = {}; document.querySelectorAll(".admin-body .sim-sect").forEach((t) => { const c = t.nextElementSibling; r[t.textContent.trim()] = c && c.classList.contains("sim-card") ? Array.from(c.querySelectorAll(".sim-line")).map((x) => x.textContent.replace(/\s+/g, " ").trim()) : null; }); return r; });
+  igual(Object.keys(act), ["Por asesor", "Por día", "Desde qué equipo entran", "Productos más abiertos", "Qué buscan", "Qué usan", "Fallas al compartir y errores", "Últimos movimientos"], "las secciones del panel");
+  ok(act["Por día"].length === 2 && /2 personas · 40 min · 14 fichas · 5 cotiz\. · 1 videos$/.test(act["Por día"][0]), "por día → " + act["Por día"][0]);
+  igual(act["Desde qué equipo entran"], ["Android1 persona", "iPhone1 persona"], "desde qué equipo entran");
+  igual(act["Qué buscan"], ["olla3", "teterasin resultados 1 vez1"], "qué buscan, y lo que no encuentran");
+  igual(act["Qué usan"], ["Fichas abiertas20", "Cotizaciones (intentos)7", "Búsquedas4"], "qué usan, con nombres claros");
+  ok(/^Rosa Quispe video falló: Olla a presiónAndroid · Chrome · bajar · TypeError: Failed to fetch/.test(act["Fallas al compartir y errores"][0]), "las fallas al compartir, con el equipo y el motivo → " + act["Fallas al compartir y errores"][0]);
+  const ult = act["Últimos movimientos"];
+  ok(/^Rosa Quispe cotización enviada: JUEGO GOURMET SERIE ZYLSTRA \(autocompra\)/.test(ult[0]) && /^Rosa Quispe video pidió otro toque: Olla a presión \(12\.4 MB, 9 s\)/.test(ult[1]) && /^Rosa Quispe buscó «tetera» \(sin resultados\)/.test(ult[2]) && /^40123456 entró/.test(ult[3]), "y los últimos movimientos, en palabras → " + ult.join(" | "));
+  await s.foto("admin-actividad", true);
+  await p.locator(".ev-tools .sim-chip", { hasText: "Hoy" }).click(); await p.waitForTimeout(300);
+  igual((await s.rpc("admin_actividad"))[1], { p_token: "tok-admin", p_dias: 1 }, "«Hoy» pide solo el día");
   await s.fin("admin");
 }
 
@@ -508,9 +618,13 @@ const dentroDe = (a, b, tol) => !!(a && b) && a.x >= b.x - tol && a.y >= b.y - t
 const noSeTapan = (a, b) => a.aba <= b.y + 1 || b.aba <= a.y + 1 || a.der <= b.x + 1 || b.der <= a.x + 1;
 const enPantalla = (c, t) => c.x >= 0 && c.y >= 0 && c.der <= t.vw && c.aba <= t.vh;
 async function tutorial() {
-  titulo("Tutorial: la primera vez (celular)");
-  const s = await sesion({ movil: true, tour: true, cambiar: sinBono });
+  titulo("Tutorial: solo con su botón (celular)");
+  const s = await sesion({ movil: true, cambiar: sinBono });
   const p = s.pagina;
+  await p.waitForTimeout(1400);
+  igual(await s.cuenta(".tour"), 0, "ya no arranca solo, ni la primera vez que se entra");
+  igual(await s.textos(".nav-top .tour-ver"), ["Ver tutorial"], "queda su botón, a la vista arriba");
+  await p.locator(".nav-top .tour-ver").click();
   const sig = async (t) => { await p.locator(".tour-sig").click(); return pasoTour(s, t.n); };
   const revisar = async (t, sel, msg) => {
     const c = (await s.cajas(sel))[0];
@@ -519,17 +633,14 @@ async function tutorial() {
     ok(enPantalla(t.carta, t), t.titulo + ": la tarjeta entra entera en la pantalla");
   };
   let t = await pasoTour(s, "");
-  ok(/Hola/.test(t.titulo) && t.n === "1 de 18", "la primera vez arranca solo, con un saludo → " + t.titulo + " · " + t.n);
-  igual(t.botones, ["Saltar tutorial", "Empezar"], "y se puede saltar desde el inicio");
-  igual(await p.evaluate(() => localStorage.getItem("rw_tour_v1")), "1", "queda anotado en este equipo que ya salió");
-  await s.foto("tutorial-0-saludo");
-  t = await sig(t);
+  igual([t.titulo, t.n], ["Elige la lista", "1 de 17"], "al tocarlo empieza por el menú de listas, sin saludo");
+  igual(t.botones, ["Saltar tutorial", "Siguiente"], "y se puede saltar desde el inicio");
   await revisar(t, ".lista-switch", "resalta el menú de listas");
   ok(/naranja/.test(t.texto), "explica que las naranjas son especiales");
-  igual(t.botones, ["Saltar", "Atrás", "Siguiente"], "con Saltar, Atrás y Siguiente");
   await s.foto("tutorial-1-listas");
   t = await sig(t);
   await revisar(t, ".search-bar", "resalta el buscador");
+  igual(t.botones, ["Saltar", "Atrás", "Siguiente"], "con Saltar, Atrás y Siguiente");
   t = await sig(t);
   const nombre = await p.evaluate(() => { const f = document.querySelector(".tour-foco").getBoundingClientRect(); const el = Array.from(document.querySelectorAll(".tile")).find((x) => { const r = x.getBoundingClientRect(); return r.top >= f.top - 3 && r.bottom <= f.bottom + 3 && r.left >= f.left - 3 && r.right <= f.right + 3; }); return el ? el.querySelector(".tile-name").textContent : ""; });
   ok(t.titulo === "Abre un producto" && !!nombre, "resalta un producto de la lista → " + nombre);
@@ -558,9 +669,10 @@ async function tutorial() {
   await revisar(t, ".modal-box .cbox.editable", "resalta la inicial");
   const m = /con (S\/\s?[\d,.]+) de inicial, la cuota de (\d+) meses baja de (S\/\s?[\d,.]+) a (S\/\s?[\d,.]+)/.exec(t.texto);
   ok(!!m && num(m[4]) < num(m[3]), "sube la inicial y muestra cuánto baja la cuota → " + t.texto);
+  ok(/toca OK/.test(t.texto), "y dice cómo confirmarla: con OK");
   if (m) {
     igual(num(await p.locator(".modal-box .cbox.editable input").inputValue()), num(m[1]), "la inicial de la ficha es la que dice la tarjeta");
-    const cuota = await p.evaluate((meses) => { const b = Array.from(document.querySelectorAll(".modal-box .inst-btn")).find((x) => x.querySelector(".inst-m").textContent === meses + "m"); return b ? b.querySelector(".inst-v").textContent : ""; }, m[2]);
+    const cuota = await p.evaluate((meses) => { const b = Array.from(document.querySelectorAll(".modal-box .inst-btn")).find((x) => x.querySelector(".inst-m").textContent === meses + " meses"); return b ? b.querySelector(".inst-v").textContent : ""; }, m[2]);
     igual(num(cuota), num(m[4]), "y la cuota nueva es la que se ve en la ficha");
   }
   await s.foto("tutorial-8-inicial");
@@ -576,8 +688,9 @@ async function tutorial() {
   igual(await s.texto(".modal-box .mode-tab.on"), "Precio Autocompra", "sigue en Precio Autocompra");
   await s.foto("tutorial-10-empiece-ya");
   t = await sig(t);
-  await revisar(t, ".modal-box .share-quote-btn", "resalta Compartir cotización");
-  ok(t.carta.aba <= t.foco.y, "la tarjeta va encima del botón, que está abajo");
+  await revisar(t, ".modal-box .quote-actions", "resalta Compartir cotización y Copiar");
+  ok(dentroDe((await s.cajas(".modal-box .copy-quote-btn"))[0], t.foco, 3) && /todas las cuotas/.test(t.texto) && /Copiar/.test(t.texto), "explica que la imagen trae contado y cuotas, y para qué sirve Copiar → " + t.texto);
+  ok(t.carta.aba <= t.foco.y, "la tarjeta va encima de los botones, que están abajo");
   t = await sig(t);
   igual(t.titulo, "Las promociones", "luego pasa por una promoción");
   ok(await s.cuenta(".modal-box") === 0 && /Compartir/.test(await s.texto(".lista-btn.on.esp")), "con la lista especial vigente abierta");
@@ -605,7 +718,7 @@ async function tutorial() {
   t = await sig(t);
   igual([await s.cuenta(".modal-box"), await s.texto(".lista-btn.on .lista-nom")], [0, "Lista General"], "al final cierra todo y vuelve a la Lista General");
   await revisar(t, ".tour-ver", "y señala «Ver tutorial»");
-  igual([t.n, t.botones], ["18 de 18", ["Atrás", "Terminar"]], "son 18 pasos y el último se cierra con Terminar");
+  igual([t.n, t.botones], ["17 de 17", ["Atrás", "Terminar"]], "son 17 pasos y el último se cierra con Terminar");
   await s.foto("tutorial-11-listo");
   await p.locator(".tour-sig").click(); await p.waitForTimeout(300);
   igual(await s.cuenta(".tour"), 0, "Terminar cierra el tutorial");
@@ -613,11 +726,10 @@ async function tutorial() {
   igual(evs.filter((x) => x.p_tipo === "tutorial").map((x) => x.p_detalle.accion), ["inicio", "fin"], "queda registrado que lo vio entero");
   igual([evs.filter((x) => x.p_tipo === "ver_lista").length, evs.filter((x) => x.p_tipo === "ver_producto").length], [1, 0], "lo que abre el tutorial no cuenta como uso (solo la lista del inicio)");
   await p.reload(); await p.waitForSelector(".lista-btn"); await p.waitForTimeout(1500);
-  igual(await s.cuenta(".tour"), 0, "la segunda vez ya no sale solo");
-  igual(await s.textos(".nav-top .tour-ver"), ["Ver tutorial"], "pero «Ver tutorial» está a la vista arriba");
+  igual(await s.cuenta(".tour"), 0, "al volver a entrar tampoco sale solo");
   await p.locator(".nav-top .tour-ver").click();
   t = await pasoTour(s, "");
-  igual(t.titulo, "Elige la lista", "y vuelve a empezar, sin el saludo");
+  igual(t.titulo, "Elige la lista", "y se puede ver otra vez desde el inicio");
   await p.locator(".tour-saltar").click(); await p.waitForTimeout(300);
   igual(await s.cuenta(".tour"), 0, "Saltar lo cierra en cualquier paso");
   await p.locator(".header-cuenta").click(); await p.waitForTimeout(150);
@@ -629,7 +741,8 @@ async function tutorial() {
   await s.fin("tutorial en el celular");
 
   titulo("Tutorial en un celular chico (360 × 640)");
-  const c = await sesion({ movil: true, viewport: { width: 360, height: 640 }, tour: true, cambiar: sinBono });
+  const c = await sesion({ movil: true, viewport: { width: 360, height: 640 }, cambiar: sinBono });
+  await c.pagina.locator(".nav-top .tour-ver").click();
   let v = await pasoTour(c, "");
   const malos = [];
   for (let k = 0; k < 20; k++) {
@@ -643,11 +756,14 @@ async function tutorial() {
   await c.fin("tutorial en celular chico");
 
   titulo("Tutorial en escritorio");
-  const d = await sesion({ viewport: { width: 1280, height: 860 }, tour: true, cambiar: sinBono });
+  const d = await sesion({ viewport: { width: 1280, height: 860 }, cambiar: sinBono });
   const q = d.pagina;
+  await q.waitForTimeout(1200);
+  igual(await d.cuenta(".tour"), 0, "tampoco arranca solo");
+  await q.locator(".tour-ver").first().click();
   let u = await pasoTour(d, "");
-  ok(enPantalla(u.carta, u) && Math.abs(u.carta.x + u.carta.w / 2 - 640) <= 2, "el saludo va al centro");
-  for (let k = 0; k < 4; k++) { await q.locator(".tour-sig").click(); u = await pasoTour(d, u.n); }
+  ok(enPantalla(u.carta, u) && u.titulo === "Elige la lista", "se abre con «Ver tutorial»");
+  for (let k = 0; k < 3; k++) { await q.locator(".tour-sig").click(); u = await pasoTour(d, u.n); }
   igual(u.titulo, "Muestra el video", "llega al video");
   const modal = (await d.cajas(".modal-box"))[0];
   ok(u.carta.x >= modal.der || u.carta.der <= modal.x, "en escritorio la tarjeta va al costado de la ficha, sin taparla");
@@ -685,9 +801,382 @@ async function compartir() {
   }
 }
 
+/* ------------------------------------------------------------------ 11. la inicial: una sola para contado y crédito, y cómo se confirma */
+const FACT = Object.fromEntries(DATOS.factores.map((f) => [f.meses, f.factor]));
+const cuotaDe = (saldo, meses) => Math.round(saldo * FACT[meses]) + 20;
+const soles = (n) => "S/ " + Number(n).toLocaleString("en-US");
+async function inicial() {
+  titulo("La inicial: se cambia, se confirma con OK y vale para contado y crédito");
+  const s = await sesion({ movil: true, cambiar: (m) => {
+    sinBono(m);
+    const g = m.productos.filter((x) => x.lista_id === "general" && x.activo).sort((a, b) => a.orden - b.orden);
+    g[1].precio = 1167; g[2].precio = 1166;   // justo en el límite: con 10 % de inicial, el saldo a financiar queda en 1,050 y en 1,049
+    g[1].precio_asesor = 1043.3; g[2].precio_asesor = 1042.4;
+    m.__lim = [g[1].codigo, g[2].codigo];
+  } });
+  const p = s.pagina;
+  const campo = () => p.locator(".modal-box .cbox.editable input");
+  const valor = async () => num(await campo().inputValue());
+  const abrir = async (i) => { await p.locator(".tile .tile-btn").nth(i).click(); await p.waitForTimeout(450); };
+  const credito = async () => { await p.locator(".modal-box .tab-btn", { hasText: "Crédito" }).click(); await p.waitForTimeout(250); };
+  const contado = async () => { await p.locator(".modal-box .tab-btn", { hasText: "Contado" }).click(); await p.waitForTimeout(250); };
+  const escribir = async (n) => { await campo().click(); await p.waitForTimeout(260); await p.keyboard.type(String(n)); await p.waitForTimeout(150); };
+  const cuotas = () => p.evaluate(() => Array.from(document.querySelectorAll(".modal-box .inst-btn")).map((b) => [parseInt(b.querySelector(".inst-m").textContent, 10), Number(b.querySelector(".inst-v").textContent.replace(/[^0-9.]/g, ""))]));
+
+  await abrir(0);
+  igual(await valor(), 963, "la ficha abre con la inicial mínima: 10 % de S/ 9,629");
+  await s.pestana("Autocompra");
+  igual(await valor(), 861, "en autocompra, mientras no se cambie, es el 10 % de tu precio (S/ 8,606)");
+  await s.pestana("Cliente");
+  igual(await valor(), 963, "y al volver a Precio Cliente, otra vez el 10 % del precio de cliente");
+  igual(await s.texto(".modal-box .cbox-ayuda"), "Toca el monto para cambiarlo", "debajo dice que la inicial se puede cambiar");
+  igual(await s.cuenta(".modal-box .cbox-ok"), 0, "sin botón OK mientras no se toca");
+  await campo().click(); await p.waitForTimeout(260);
+  igual([await s.cuenta(".modal-box .cbox-ayuda"), await s.textos(".modal-box .cbox-ok")], [0, ["OK"]], "al tocar el monto, en ese lugar aparece el botón OK");
+  ok(/editando/.test(await p.locator(".modal-box .cbox.editable").getAttribute("class")), "y el recuadro se resalta");
+  await p.keyboard.type("2000"); await p.waitForTimeout(200);
+  igual(await valor(), 2000, "lo que se escribe reemplaza al monto anterior (queda elegido al tocarlo): 2000, no 9632000");
+  igual(await s.texto(".modal-box .tab-content .cbox:not(.editable) .cbox-value"), "S/ 7,629", "el saldo cambia mientras se escribe, sin esperar al OK");
+  const medirOk = (pg) => pg.evaluate(() => { const i = document.querySelector(".modal-box .cbox.editable input"), b = document.querySelector(".modal-box .cbox-ok").getBoundingClientRect(), r = i.getBoundingClientRect(), k = document.querySelector(".modal-box .cbox.editable").getBoundingClientRect();
+    return { entero: i.scrollWidth <= i.clientWidth + 1, debajo: b.top >= r.bottom - 1, alLado: b.left >= r.right - 1 && b.top < r.bottom, ancho: Math.round(b.width), alto: Math.round(b.height), caja: Math.round(k.width) }; });
+  const okC = await medirOk(p);
+  ok(okC.debajo && okC.ancho >= okC.caja - 30 && okC.alto >= 36 && okC.entero, "en Contado el OK va debajo del monto, a todo el ancho del recuadro, y el número se ve entero → " + JSON.stringify(okC));
+  await p.locator(".modal-box .cbox-ok").click(); await p.waitForTimeout(250);
+  igual([await s.cuenta(".modal-box .cbox-ok"), await valor(), await s.cuenta(".modal-box .alert-toast")], [0, 2000, 0], "OK confirma: queda S/ 2,000, sin avisos");
+  await credito();
+  igual(await valor(), 2000, "al pasar a Crédito se mantiene la inicial que se puso en Contado");
+  igual(await cuotas(), [3, 6, 9, 12, 15, 18].map((m) => [m, cuotaDe(7629, m)]), "y las cuotas salen con esa inicial");
+  await escribir(3000);
+  const okK = await medirOk(p);
+  igual(await s.texto(".modal-box .cbox-ayuda"), "Escribe el monto y toca OK", "en Crédito, mientras se escribe, dice cómo confirmar");
+  ok(okK.alLado && okK.ancho >= 44 && okK.alto >= 34 && okK.entero, "con el OK al costado del monto, grande para el dedo → " + JSON.stringify(okK));
+  await p.keyboard.press("Enter"); await p.waitForTimeout(250);
+  igual([await valor(), await s.cuenta(".modal-box .cbox-ok")], [3000, 0], "en Crédito también se cambia, y Intro (o «Listo» en el teclado) confirma igual que OK");
+  await contado();
+  igual([await valor(), await s.texto(".modal-box .tab-content .cbox:not(.editable) .cbox-value")], [3000, "S/ 6,629"], "y al volver a Contado sigue la misma inicial");
+  await escribir(9000); await p.locator(".modal-box .cbox-ok").click(); await p.waitForTimeout(250);
+  await credito();
+  igual(await valor(), 8579, "si la inicial de contado deja menos de S/ 1,050 por financiar, en Crédito baja al tope: 9,629 − 1,050");
+  ok(/hasta S\/ 8,579/.test(await s.texto(".modal-box .alert-toast")) && /saldo mínimo a financiar es S\/ 1,050/.test(await s.texto(".modal-box .alert-toast")), "y explica por qué → " + await s.texto(".modal-box .alert-toast"));
+  igual((await cuotas()).map((c) => c[0]), [3, 6, 9], "con S/ 1,050 por financiar quedan las cuotas de S/ 150 o más");
+  await s.pestana("Autocompra");
+  igual(await s.cuenta(".modal-box .alert-toast"), 0, "al cambiar a autocompra el aviso anterior se va");
+  igual(await valor(), 7556, "y la inicial que ya se cambió se respeta también ahí, hasta su tope (8,606 − 1,050)");
+  await s.cerrarFicha();
+  await abrir(0);
+  igual(await valor(), 963, "al cerrar la ficha y volver a abrirla, la inicial regresa al 10 %");
+  await credito();
+  igual(await valor(), 963, "también en Crédito");
+  await escribir(""); await p.keyboard.press("Backspace"); await p.locator(".modal-box .cbox-ok").click(); await p.waitForTimeout(250);
+  igual(await valor(), 963, "si se borra el monto, vuelve al mínimo");
+  ok(/mínimo del 10%/.test(await s.texto(".modal-box .alert-toast")), "y lo avisa → " + await s.texto(".modal-box .alert-toast"));
+  await s.foto("inicial-credito");
+  await s.cerrarFicha();
+
+  titulo("Crédito: el saldo mínimo a financiar es S/ 1,050");
+  await abrir(1);
+  igual(await s.texto(".modal-box .price-big"), "S/ 1,167", "un producto de S/ 1,167");
+  ok(!(await p.locator(".modal-box .tab-btn", { hasText: "Crédito" }).isDisabled()), "con 10 % de inicial quedan S/ 1,050 por financiar: sí tiene crédito");
+  await credito();
+  igual([await valor(), await cuotas()], [117, [3, 6, 9].map((m) => [m, cuotaDe(1050, m)])], "con sus cuotas sobre S/ 1,050");
+  await contado();
+  igual(await s.cuenta(".modal-box .sin-credito"), 0, "sin el aviso de solo contado");
+  await s.pestana("Autocompra");
+  const auto = num(await s.texto(".modal-box .auto-ticket .tk-total"));
+  ok(auto < 1167 && await p.locator(".modal-box .tab-btn", { hasText: "Crédito" }).isDisabled(), "en autocompra el precio baja a " + soles(auto) + " y el saldo ya no llega: sin crédito");
+  ok(/Solo al contado: para dar crédito, el saldo a financiar debe ser de S\/ 1,050 o más/.test(await s.texto(".modal-box .sin-credito")), "y la ficha dice por qué → " + await s.texto(".modal-box .sin-credito"));
+  await s.cerrarFicha();
+  await abrir(2);
+  igual(await s.texto(".modal-box .price-big"), "S/ 1,166", "uno de S/ 1,166");
+  ok(await p.locator(".modal-box .tab-btn", { hasText: "Crédito" }).isDisabled() && await s.cuenta(".modal-box .sin-credito") === 1, "quedan S/ 1,049 por financiar: solo al contado, y lo dice");
+  const cq = await s.cot((m) => /1,166/.test(JSON.stringify(m)));
+  igual(cq && cq.bloques.map((b) => b.tipo), ["contado"], "y su cotización sale solo con el contado");
+  await s.cerrarFicha();
+  await s.fin("inicial y crédito");
+
+  titulo("La inicial en un celular chico (360 px)");
+  const c = await sesion({ movil: true, viewport: { width: 360, height: 640 }, cambiar: sinBono });
+  await c.pagina.locator(".tile .tile-btn").first().click(); await c.pagina.waitForTimeout(450);
+  await c.pagina.locator(".modal-box .cbox.editable input").click(); await c.pagina.waitForTimeout(260);
+  await c.pagina.keyboard.type("9500"); await c.pagina.waitForTimeout(200);
+  const ch = await medirOk(c.pagina);
+  ok(ch.entero && ch.debajo && ch.ancho >= ch.caja - 30, "al escribir, el monto se ve entero y el OK queda debajo → " + JSON.stringify(ch));
+  await c.pagina.evaluate(() => { document.querySelector(".modal-box .cbox.editable input").style.width = "24px"; });
+  ok(!(await medirOk(c.pagina)).entero, "(la prueba sí nota cuando el número no cabe)");
+  await c.pagina.evaluate(() => { document.querySelector(".modal-box .cbox.editable input").style.width = ""; });
+  await c.foto("inicial-360-editando");
+  await c.pagina.locator(".modal-box .cbox-ok").click(); await c.pagina.waitForTimeout(250);
+  await c.pagina.locator(".modal-box .mode-tab", { hasText: "Autocompra" }).click(); await c.pagina.waitForTimeout(250);
+  await c.pagina.locator(".modal-box .tab-btn", { hasText: "Crédito" }).click(); await c.pagina.waitForTimeout(300);
+  const ah = await c.pagina.evaluate(() => { const f = document.querySelector(".modal-box .cm-row.ahorro"), v = f.querySelector(".cm-save"), o = document.querySelector(".modal-box .inst-orig"), n = document.querySelector(".modal-box .inst-v"), t = document.querySelector(".modal-box .cm-row.hl");
+    const px = (e) => parseFloat(getComputedStyle(e).fontSize);
+    return { texto: f.textContent.replace(/\s+/g, " "), fondo: getComputedStyle(f).backgroundColor, ahorro: px(v), total: px(t), antes: px(o), tachada: getComputedStyle(o).textDecorationLine, cuota: px(n), orden: o.getBoundingClientRect().top < n.getBoundingClientRect().top }; });
+  ok(/^Total ahorro- S\/ [\d,]+$/.test(ah.texto) && ah.fondo === "rgb(236, 253, 245)" && ah.ahorro >= 15.4 && ah.total >= 15.4, "en autocompra el ahorro va resaltado en verde y, como el total, con la letra 10 % más grande → " + JSON.stringify(ah));
+  ok(ah.tachada === "line-through" && ah.orden && ah.antes >= 13.5 && ah.cuota >= 17, "y en cada plazo, la cuota del cliente tachada encima de la tuya, más grande");
+  await c.foto("autocompra-360-ahorro");
+  await c.fin("inicial en celular chico");
+}
+
+/* ------------------------------------------------------------------ 12. la cotización: contado y crédito siempre, versión de autocompra, compartir y copiar */
+async function cotizacion() {
+  titulo("Cotización para el cliente: contado y todas las cuotas");
+  const s = await sesion({ movil: true, cambiar: sinBono });
+  const p = s.pagina;
+  await p.evaluate(() => {   // la hoja de compartir y el portapapeles del teléfono, de mentira
+    window.__compartido = []; window.__copiado = []; window.__falla = [];
+    Object.defineProperty(navigator, "canShare", { configurable: true, value: () => true });
+    Object.defineProperty(navigator, "share", { configurable: true, value: async (d) => {
+      const f = window.__falla.shift();
+      if (f) { const e = new Error(f); e.name = f; throw e; }
+      const a = (d.files || [])[0], b = a ? await createImageBitmap(a) : null;
+      window.__compartido.push({ nombre: a ? a.name : "", tipo: a ? a.type : "", bytes: a ? a.size : 0, ancho: b ? b.width : 0, alto: b ? b.height : 0, cuantos: (d.files || []).length });
+    } });
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { write: async (items) => {
+      const r = [];
+      for (const it of items) { const b = await it.getType(it.types[0]); const bm = await createImageBitmap(b); r.push({ tipos: Array.from(it.types), bytes: b.size, ancho: bm.width }); }
+      window.__copiado.push(r);
+    } } });
+  });
+  await p.locator(".tile .tile-btn").first().click(); await p.waitForTimeout(450);
+  const todas = [3, 6, 9, 12, 15, 18];
+  let m = await s.cot((x) => x.chip === "Precio Cliente" && x.bloques.length === 2);
+  igual(m && [m.nombre, m.codigo, m.chip, m.auto, m.puntos], ["Juego Gourmet serie Zylstra", "Cod. 000158 - N° 1", "Precio Cliente", false, null], "dice el producto, su código y que es el precio de cliente; sin puntos");
+  igual(m && m.bloques.map((b) => b.titulo), ["Al contado", "Al crédito"], "trae el contado y el crédito, aunque en la ficha esté tocado Contado");
+  igual(m && [m.bloques[0].total, m.bloques[0].pie], [{ t: "Precio contado", v: "S/ 9,629" }, [{ t: "Inicial", v: "S/ 963" }, { t: "Saldo contra entrega", v: "S/ 8,666" }]], "al contado: precio, inicial y saldo contra entrega");
+  igual(m && [m.bloques[1].nota, m.bloques[1].filas, m.bloques[1].cuotas], ["De 3 a 18 meses", [{ t: "Inicial", v: "S/ 963" }], todas.map((n) => ({ t: n + " cuotas de", v: soles(cuotaDe(8666, n)), antes: "" }))], "al crédito: la inicial y todos los plazos disponibles, de 3 a 18 meses");
+  const enContado = JSON.stringify(m);
+  await p.locator(".modal-box .tab-btn", { hasText: "Crédito" }).click(); await p.waitForTimeout(900);
+  igual(JSON.stringify(await s.cot()), enContado, "y es la misma si en la ficha está tocado Crédito");
+  igual(await s.cuenta(".modal-box .qc-card") + await s.cuenta(".qc-holder"), 0, "la imagen se dibuja al momento: ya no hay una tarjeta escondida en la página");
+
+  await p.locator(".modal-box .cbox.editable input").click(); await p.waitForTimeout(260);
+  await p.keyboard.type("2000"); await p.locator(".modal-box .cbox-ok").click();
+  m = await s.cot((x) => x.bloques[1] && x.bloques[1].filas[0].v === "S/ 2,000");
+  igual(m && [m.bloques[0].pie.map((f) => f.v), m.bloques[1].cuotas.map((c) => c.v)], [["S/ 2,000", "S/ 7,629"], todas.map((n) => soles(cuotaDe(7629, n)))], "si cambia la inicial, la cotización cambia: contado y cuotas con S/ 2,000");
+
+  titulo("Compartir y copiar la cotización");
+  igual(await s.textos(".modal-box .quote-actions button"), ["Compartir cotización", "Copiar"], "abajo de la ficha: Compartir cotización y Copiar");
+  await p.locator(".modal-box .share-quote-btn").click(); await p.waitForTimeout(700);
+  let c = await p.evaluate(() => window.__compartido);
+  igual(c.map((x) => [x.cuantos, x.nombre, x.tipo, x.ancho]), [[1, "cotizacion-000158-cliente-ini2000.png", "image/png", 1040]], "compartir manda una sola imagen PNG de 1040 px de ancho");
+  ok(c[0] && c[0].alto > 900 && c[0].bytes > 30000, "con el contado y las cuotas → " + JSON.stringify(c[0]));
+  const altoSinFoto = c[0] ? c[0].alto : 0;
+  igual(await s.cuenta(".modal-box .cap-err") + await s.cuenta(".modal-box .cap-ok"), 0, "sin avisos cuando sale bien");
+  await p.locator(".modal-box .copy-quote-btn").click(); await p.waitForTimeout(700);
+  const cp = await p.evaluate(() => window.__copiado);
+  igual(cp.map((x) => x.map((y) => [y.tipos, y.ancho])), [[[["image/png"], 1040]]], "Copiar pone UNA imagen en el portapapeles (el «Copiar» del iPhone pegaba dos)");
+  igual(await s.texto(".modal-box .cap-ok"), "Imagen copiada. Ahora pégala en tu chat.", "y dice qué hacer después");
+  // el celular a veces se niega a compartir si pasó mucho rato desde el toque: la imagen queda lista y se envía con otro toque
+  await p.evaluate(() => { window.__falla = ["NotAllowedError"]; });
+  await p.locator(".modal-box .share-quote-btn").click(); await p.waitForTimeout(600);
+  igual([await s.texto(".modal-box .share-quote-btn"), await s.texto(".modal-box .cap-ok"), await s.cuenta(".modal-box .cap-err")], ["Imagen lista: toca para enviar", "La imagen ya está lista. Toca otra vez para enviarla.", 0], "si el celular no deja compartir en ese toque, no da error: pide otro toque");
+  ok(/lista/.test(await p.locator(".modal-box .share-quote-btn").getAttribute("class")), "con el botón en verde");
+  await p.locator(".modal-box .share-quote-btn").click(); await p.waitForTimeout(600);
+  c = await p.evaluate(() => window.__compartido);
+  igual([c.length, c[1] && c[1].nombre, await s.texto(".modal-box .share-quote-btn"), await s.cuenta(".modal-box .cap-ok")], [2, "cotizacion-000158-cliente-ini2000.png", "Compartir cotización", 0], "y con el segundo toque sale");
+  await p.evaluate(() => { window.__falla = ["DataError"]; });
+  await p.locator(".modal-box .share-quote-btn").click(); await p.waitForTimeout(600);
+  igual(await s.texto(".modal-box .cap-err"), "Tu celular no dejó compartir la imagen. Prueba con Copiar.", "si de verdad falla, lo dice claro y ofrece Copiar");
+  await p.evaluate(() => { window.__falla = ["AbortError"]; });
+  await p.locator(".modal-box .share-quote-btn").click(); await p.waitForTimeout(600);
+  igual(await s.cuenta(".modal-box .cap-err") + await s.cuenta(".modal-box .cap-ok"), 0, "si la asesora cierra las opciones de compartir, no es un error");
+  igual((await s.eventos("cotizacion")).map((e) => [e.via, e.resultado, e.codigo, e.modo]), [["compartir", "ok", "000158", "cliente"], ["copiar", "ok", "000158", "cliente"], ["compartir", "otro_toque", "000158", "cliente"], ["compartir", "ok", "000158", "cliente"], ["compartir", "error", "000158", "cliente"], ["compartir", "cancelado", "000158", "cliente"]], "cada intento queda en el registro de uso, con su resultado");
+  await s.foto("cotizacion-pie");
+
+  titulo("Cotización de autocompra");
+  await s.pestana("Autocompra");
+  await p.locator(".modal-box .tab-btn", { hasText: "Contado" }).click(); await p.waitForTimeout(250);
+  const tuPrecio = num(await s.texto(".modal-box .auto-ticket .tk-total"));
+  ok(tuPrecio > 5000 && tuPrecio < 9629, "en la ficha, tu precio de autocompra → " + tuPrecio);
+  m = await s.cot((x) => x.auto);
+  igual(m && [m.chip, m.bloques.map((b) => b.titulo)], ["Precio Autocompra", ["Al contado", "Al crédito"]], "también trae contado y crédito");
+  igual(m && [m.bloques[0].filas.map((f) => f.t), m.bloques[0].filas[0].v, m.bloques[0].total], [["Precio contado", "Menos tu descuento"], "S/ 9,629", { t: "Tu precio (contado)", v: soles(tuPrecio) }], "al contado: el precio, tu descuento y tu precio");
+  igual(m && m.bloques[0].filas[1].v, "- " + soles(9629 - tuPrecio), "con el descuento que corresponde");
+  igual(m && m.bloques[0].pie.map((f) => f.t).concat(m.bloques[1].filas.map((f) => f.t)), ["Tu inicial", "Tu saldo contra entrega", "Tu inicial"], "con tu inicial y tu saldo");
+  const ini = m ? num(m.bloques[1].filas[0].v) : 0;
+  igual(m && m.bloques[1].cuotas, todas.map((n) => ({ t: n + " cuotas de", v: soles(cuotaDe(tuPrecio - ini, n)), antes: soles(cuotaDe(9629 - ini, n)) })), "en cada plazo, la cuota del cliente (tachada) y la tuya");
+  ok(m && m.puntos && /^Esta autocompra te da [\d,]+ pts\.$/.test(m.puntos.t) && /primeras 4 semanas/.test(m.puntos.linea) && !!m.puntos.premio, "y abajo los puntos y el premio → " + JSON.stringify(m && m.puntos));
+  await p.locator(".modal-box .share-quote-btn").click(); await p.waitForTimeout(700);
+  c = await p.evaluate(() => window.__compartido);
+  ok(/^cotizacion-000158-autocompra-ini\d+\.png$/.test(c[c.length - 1].nombre) && c[c.length - 1].alto > altoSinFoto + 100, "sale como otra imagen, con su nombre, y más larga por el descuento y los puntos → " + JSON.stringify(c[c.length - 1]));
+  await s.cerrarFicha();
+
+  titulo("Cotización de un especial y de un producto sin crédito");
+  await s.lista("Compartir");
+  await p.locator(".tile .tile-btn").first().click(); await p.waitForTimeout(450);
+  const conPromo = await s.cuenta(".modal-box .price-reg") > 0;
+  m = await s.cot((x) => x.chip === "Precio Cliente" && !/000158/.test(x.codigo));
+  igual(m && m.bloques.map((b) => b.tipo), ["contado", "credito"], "el especial también sale con contado y crédito");
+  igual(m && m.bloques[0].filas.map((f) => f.t), conPromo ? ["Precio regular", "Descuento"] : [], conPromo ? "con su precio regular tachado y el descuento" : "sin precio regular, porque no lo tiene");
+  ok(m && m.bloques[1].cuotas.length >= 3 && m.bloques[1].cuotas.every((q) => /^S\/ [\d,]+$/.test(q.v)), "y sus cuotas → " + JSON.stringify(m && m.bloques[1].cuotas.map((q) => q.t + " " + q.v)));
+  await s.cerrarFicha();
+  await s.lista("Lista General");
+  await p.locator(".search-bar input").fill("000096"); await p.waitForTimeout(300);
+  await p.locator(".tile .tile-btn").first().click(); await p.waitForTimeout(450);
+  const precio = num(await s.texto(".modal-box .price-big"));
+  m = await s.cot((x) => /000096/.test(x.codigo));
+  ok(precio < 500 && m && m.bloques.length === 1 && m.bloques[0].pie.length === 0 && m.bloques[0].total.v === soles(precio), "un producto de menos de S/ 500 se paga completo: solo el precio al contado → " + JSON.stringify(m && m.bloques[0].total));
+  await s.cerrarFicha();
+  await s.fin("cotización");
+
+  titulo("La cotización lleva la foto del producto");
+  const dirFotos = fs.mkdtempSync(path.join(require("os").tmpdir(), "rw-fotos-"));
+  fs.copyFileSync(path.join(RAIZ, "promociones", "eq-olla-presion-8l.webp"), path.join(dirFotos, "000158.webp"));
+  const f = await sesion({ movil: true, fotos: [dirFotos], cambiar: sinBono });
+  await f.pagina.evaluate(() => {
+    window.__compartido = [];
+    Object.defineProperty(navigator, "canShare", { configurable: true, value: () => true });
+    Object.defineProperty(navigator, "share", { configurable: true, value: async (d) => { const b = await createImageBitmap(d.files[0]); window.__compartido.push({ ancho: b.width, alto: b.height, bytes: d.files[0].size }); } });
+  });
+  await f.pagina.locator(".tile .tile-btn").first().click(); await f.pagina.waitForTimeout(1300);
+  await f.pagina.locator(".modal-box .share-quote-btn").click(); await f.pagina.waitForTimeout(700);
+  const cf = await f.pagina.evaluate(() => window.__compartido);
+  ok(cf.length === 1 && cf[0].ancho === 1040 && cf[0].alto > altoSinFoto + 250, "con la foto arriba, la imagen es más alta → " + JSON.stringify(cf[0]) + " (sin foto, " + altoSinFoto + " px)");
+  await f.fin("cotización con foto");
+  fs.rmSync(dirFotos, { recursive: true, force: true });
+}
+
+/* ------------------------------------------------------------------ 13. el video: preparación, envío, segundo toque y respaldo por enlace */
+async function video() {
+  const ANDROID = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36";
+  const preparar = async (o, adjunta) => {
+    const s = await sesion(Object.assign({ movil: true, ua: ANDROID, cambiar: sinBono }, o || {}));
+    await s.pagina.evaluate((adj) => {
+      window.__compartido = []; window.__abiertos = []; window.__falla = [];
+      window.open = (u) => { window.__abiertos.push(String(u)); return null; };
+      if (!adj) return;
+      Object.defineProperty(navigator, "canShare", { configurable: true, value: () => true });
+      Object.defineProperty(navigator, "share", { configurable: true, value: async (d) => {
+        const f = window.__falla.shift();
+        if (f) { const e = new Error(f); e.name = f; throw e; }
+        window.__compartido.push({ archivos: (d.files || []).map((x) => x.name), bytes: (d.files || []).reduce((t, x) => t + x.size, 0) });
+      } });
+    }, adjunta !== false);
+    await s.pagina.locator(".tile .tile-btn").first().click(); await s.pagina.waitForTimeout(500);
+    return s;
+  };
+  const boton = ".modal-box .vid-wa";
+
+  titulo("Enviar el video: se prepara una vez y queda guardado");
+  let s = await preparar({ video: { bytes: 300000 } });
+  let p = s.pagina;
+  igual(await s.texto(boton), "Enviar video", "el botón dice Enviar video");
+  await p.waitForTimeout(1900);
+  igual(s.registro.videos.length, 0, "con datos del celular no baja nada hasta que la asesora lo pide");
+  await p.locator(boton).click(); await p.waitForTimeout(700);
+  igual([await p.evaluate(() => window.__compartido.map((x) => [x.archivos.length, x.bytes])), s.registro.videos.length], [[[1, 300000]], 1], "al tocar, baja el video y abre las opciones de compartir con el archivo");
+  await p.locator(boton).click(); await p.waitForTimeout(500);
+  igual([await p.evaluate(() => window.__compartido.length), s.registro.videos.length], [2, 1], "al enviarlo otra vez ya no lo vuelve a bajar");
+  await s.cerrarFicha();
+  await p.reload(); await p.waitForSelector(".lista-btn"); await p.waitForTimeout(400);
+  await p.evaluate(() => { window.__compartido = []; Object.defineProperty(navigator, "canShare", { configurable: true, value: () => true }); Object.defineProperty(navigator, "share", { configurable: true, value: async (d) => { window.__compartido.push((d.files || []).map((x) => x.size)); } }); });
+  await p.locator(".tile .tile-btn").first().click(); await p.waitForTimeout(500);
+  await p.locator(boton).click(); await p.waitForTimeout(600);
+  igual([await p.evaluate(() => window.__compartido), s.registro.videos.length], [[[300000]], 1], "ni siquiera al volver a entrar al portal: queda guardado en el celular");
+  const ev = await s.eventos("video");
+  igual(ev.map((e) => [e.accion, e.resultado, e.origen, e.mb]), [["enviar", "ok", "guardado", 0.3]], "y queda anotado en el registro de uso, con de dónde salió y cuánto pesa");
+  await s.fin("video guardado");
+
+  titulo("Video que demora: avance, enlace de respaldo y segundo toque");
+  s = await preparar({ video: { bytes: 500000, demora: 1200 } });
+  p = s.pagina;
+  await p.evaluate(() => { window.__falla = ["NotAllowedError"]; });
+  await p.locator(boton).click(); await p.waitForTimeout(350);
+  ok(/^Preparando/.test(await s.texto(boton)) && await p.locator(boton).isDisabled(), "mientras baja, el botón dice Preparando → " + await s.texto(boton));
+  ok(/^Preparando el video/.test(await s.texto(".modal-box .vid-estado")) && await s.cuenta(".modal-box .vid-barra") === 1, "con un aviso y su barra de avance");
+  igual(await s.texto(".modal-box .vid-enlace"), "¿Demora? Enviar solo el enlace", "y la salida rápida: mandar el enlace");
+  await s.foto("video-preparando");
+  await p.waitForTimeout(1600);
+  igual([await s.texto(boton), await s.texto(".modal-box .vid-estado"), await p.evaluate(() => window.__compartido.length)], ["Video listo: enviar", "El video ya está listo. Toca «Enviar» otra vez.", 0], "si demoró tanto que el celular ya no deja compartir, no manda solo el texto: avisa que está listo");
+  ok(/listo/.test(await p.locator(boton).getAttribute("class")) && !(await p.locator(boton).isDisabled()), "con el botón resaltado");
+  await s.foto("video-listo");
+  await p.locator(boton).click(); await p.waitForTimeout(500);
+  igual([await p.evaluate(() => window.__compartido.map((x) => x.bytes)), await s.texto(boton), await s.cuenta(".modal-box .vid-estado"), s.registro.videos.length], [[500000], "Enviar video", 0, 1], "y con el segundo toque sale el video, sin volver a bajarlo");
+  igual((await s.eventos("video")).map((e) => e.resultado), ["otro_toque", "ok"], "los dos toques quedan registrados");
+  igual(await p.evaluate(() => window.__abiertos), [], "nunca se abrió WhatsApp con solo el texto");
+  await s.fin("video lento");
+
+  titulo("Video que no se puede bajar o celular que no adjunta");
+  s = await preparar({ video: { falla: true } });
+  p = s.pagina;
+  await p.locator(boton).click(); await p.waitForTimeout(600);
+  igual([await s.texto(".modal-box .vid-estado span"), await s.texto(".modal-box .vid-enlace")], ["No se pudo preparar el video. Revisa tu conexión.", "Enviar el enlace por WhatsApp"], "si la bajada falla, lo dice y ofrece mandar el enlace");
+  await p.locator(".modal-box .vid-enlace").click(); await p.waitForTimeout(200);
+  const ab = await p.evaluate(() => window.__abiertos);
+  ok(ab.length === 1 && /^https:\/\/wa\.me\/\?text=Mira%20este%20producto/.test(ab[0]) && /videos%2F/.test(ab[0]), "el enlace abre WhatsApp con el texto y la dirección del video → " + (ab[0] || "").slice(0, 90));
+  igual((await s.eventos("video")).map((e) => [e.resultado, e.paso]), [["error", "bajar"]], "y la falla queda registrada para verla en Actividad");
+  await s.fin("video que falla");
+  s = await preparar({}, false);
+  p = s.pagina;
+  await p.locator(boton).click(); await p.waitForTimeout(400);
+  const ab2 = await p.evaluate(() => window.__abiertos);
+  ok(ab2.length === 1 && /^https:\/\/wa\.me\/\?text=/.test(ab2[0]) && s.registro.videos.length === 0, "en un navegador que no adjunta archivos, va directo el enlace por WhatsApp, sin bajar nada");
+  ok(/se envía el enlace/.test(await s.texto(".modal-box .vid-estado")), "y lo explica → " + await s.texto(".modal-box .vid-estado"));
+  await s.fin("celular que no adjunta");
+
+  titulo("Con wifi o en computadora, el video se adelanta");
+  s = await preparar({ ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36", movil: false, viewport: { width: 1280, height: 860 }, video: { bytes: 400000 } });
+  p = s.pagina;
+  await p.waitForTimeout(2300);
+  igual(s.registro.videos.length, 1, "al abrir la ficha ya lo va bajando");
+  await p.locator(boton).click(); await p.waitForTimeout(400);
+  igual([await p.evaluate(() => window.__compartido.map((x) => x.bytes)), s.registro.videos.length], [[400000], 1], "y al tocar Enviar sale al instante");
+  await s.fin("video adelantado");
+}
+
+/* ------------------------------------------------------------------ 14. la sesión se queda y el uso queda registrado */
+async function permanencia() {
+  titulo("La sesión se queda aunque falle la red");
+  const NELSON = { token: "tok-asesor", nombre: "Nelson", celular: "987654321", completa: true };
+  const a = await sesion({ movil: true, recordada: NELSON, fallaValida: -1, cambiar: sinBono });
+  igual([await a.cuenta(".login-box"), (await a.textos(".lista-btn .lista-nom")).length], [0, 5], "sin red, quien ya entró en este equipo pasa directo, con su vista completa");
+  await a.pagina.locator(".header-cuenta").click(); await a.pagina.waitForTimeout(200);
+  ok(/Nelson/.test(await a.texto(".cuenta-menu")), "y el portal recuerda quién es");
+  igual(await a.pagina.evaluate(() => localStorage.getItem("rw_sesion_v1")), "tok-asesor", "la sesión sigue guardada");
+  igual((await a.eventos("visita")).length, 0, "la visita no se anota hasta que la base confirma");
+  await a.fin("sin red, con datos recordados");
+
+  const b = await sesion({ movil: true, fallaValida: 1, cambiar: sinBono });
+  igual([await b.cuenta(".login-box"), await b.textos(".lista-btn .lista-nom")], [0, ["Lista General", "Compartir", "Repuestos", "Servicios"]], "si la base no responde y el equipo no recuerda más datos, igual entra (con la vista básica) en vez de pedir el DNI");
+  await b.pagina.waitForTimeout(3400);
+  igual((await b.textos(".lista-btn .lista-nom")).length, 5, "a los pocos segundos reintenta sola y, cuando la base responde, completa la vista");
+  igual((await b.rpc("asesor_sesion_valida")).length, 2, "con un solo reintento");
+  const v = await b.eventos("visita");
+  ok(v.length === 1 && v[0].dispositivo === "Escritorio" && !!v[0].navegador && /x/.test(v[0].pantalla) && v[0].zona === "America/Lima", "la visita queda registrada con el equipo, el navegador, la pantalla y la zona → " + JSON.stringify(v[0]));
+  igual(await b.pagina.evaluate(() => JSON.parse(localStorage.getItem("rw_sesion_datos_v1") || "{}").nombre), "Nelson", "y el equipo ya recuerda a la persona para la próxima");
+  await b.fin("la base tarda en responder");
+
+  const c = await sesion({ movil: true, token: "tok-viejo", recordada: { token: "tok-viejo", nombre: "Rosa", celular: "912345678", completa: false }, cambiar: sinBono });
+  await c.pagina.waitForTimeout(300);
+  igual([await c.cuenta(".login-box"), await c.cuenta(".lista-btn")], [1, 0], "solo cuando la base dice que la sesión ya no vale se vuelve a pedir el DNI");
+  igual(await c.pagina.evaluate(() => [localStorage.getItem("rw_sesion_v1"), localStorage.getItem("rw_sesion_datos_v1")]), [null, null], "y el equipo olvida esa sesión");
+  await c.pagina.locator(".login-input").fill("40123456"); await c.pagina.locator(".login-btn").click(); await c.pagina.waitForSelector(".lista-btn");
+  igual(await c.pagina.evaluate(() => { const d = JSON.parse(localStorage.getItem("rw_sesion_datos_v1") || "{}"); return [localStorage.getItem("rw_sesion_v1"), d.token, d.nombre, d.completa]; }), ["tok-asesor", "tok-asesor", "Nelson", true], "al entrar con el DNI queda guardada la sesión y lo que se recuerda de ella");
+  await c.pagina.reload(); await c.pagina.waitForSelector(".lista-btn, .login-box"); await c.pagina.waitForTimeout(400);
+  igual([await c.cuenta(".login-box"), await c.cuenta(".lista-btn")], [0, 5], "y al volver a abrir el portal ya no pide el DNI");
+  await c.fin("sesión que ya no vale");
+
+  titulo("Registro de uso: lo que hace la asesora");
+  const d = await sesion({ movil: true, cambiar: sinBono });
+  const q = d.pagina;
+  await q.locator(".search-bar input").fill("olla"); await q.waitForTimeout(500);
+  await q.locator(".search-bar input").fill("olla a pres"); await q.waitForTimeout(2900);
+  const bus = await d.eventos("buscar");
+  ok(bus.length === 1 && bus[0].texto === "olla a pres" && bus[0].lista === "general" && bus[0].resultados > 0, "una búsqueda se anota una vez, cuando la asesora deja de escribir → " + JSON.stringify(bus));
+  await q.locator(".search-bar input").fill("zzzzqq"); await q.waitForTimeout(2900);
+  igual((await d.eventos("buscar")).map((e) => [e.texto, e.resultados]), [["olla a pres", bus[0] ? bus[0].resultados : -1], ["zzzzqq", 0]], "y también lo que busca y no encuentra");
+  await q.locator(".search-clear").click(); await q.waitForTimeout(200);
+  await q.locator(".tile .tile-btn").first().click(); await q.waitForTimeout(400);
+  igual((await d.eventos("ver_producto")).map((e) => [e.codigo, e.lista]), [["000158", "general"]], "cada ficha abierta queda anotada");
+  await q.evaluate(() => { setTimeout(() => { throw new Error("falla de prueba"); }, 0); }); await q.waitForTimeout(250);
+  igual((await d.eventos("error")).map((e) => e.msg), ["Uncaught Error: falla de prueba"], "y los errores de la página en el equipo de la asesora también");
+  d.registro.errores.length = 0;   // ese error lo provocó la prueba
+  await d.fin("registro de uso");
+}
+
 (async () => {
   const solo = process.env.SOLO || "";
-  const todas = { ingreso, vistaAsesor, ganancia, repuestos, servicios, parteAlta, admin, respaldo, tutorial, compartir };
+  const todas = { ingreso, vistaAsesor, permanencia, ganancia, inicial, cotizacion, repuestos, servicios, parteAlta, admin, respaldo, tutorial, compartir, video };
   for (const [n, fn] of Object.entries(todas)) {
     if (solo && solo.split(",").indexOf(n) < 0) continue;
     try { await fn(); } catch (e) { fallan++; console.log("  ✗ " + n + " se cayó: " + String(e.message || e).split("\n")[0]); }

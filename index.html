@@ -40,7 +40,6 @@
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.13/dist/html-to-image.js"></script>
 <style>html,body{margin:0;height:100%}#root{min-height:100%}.boot{padding:60px 20px;text-align:center;font-family:system-ui,sans-serif;color:#6b7280}</style>
 </head>
 <body>
@@ -104,6 +103,26 @@
     // supabase-js arma la llamada pero solo la envía cuando alguien la espera: sin el then no salía ningún evento
     try { sb.rpc("registrar_evento", { p_token: sesionTok, p_tipo: tipo, p_detalle: detalle || {} }).then(() => {}, () => {}); } catch (e) {}
   };
+  // Lo último que se supo de quien entró en este equipo: con eso pasa de inmediato al volver, aunque la red falle
+  var SESION_DATOS_KEY = "rw_sesion_datos_v1";
+  var recordarSesion = (s) => {
+    try { if (s) localStorage.setItem(SESION_DATOS_KEY, JSON.stringify({ token: s.token, nombre: s.nombre || "", celular: s.celular || "", completa: !!s.completa })); else localStorage.removeItem(SESION_DATOS_KEY); } catch (e) {}
+    // se le pide al navegador que no borre lo guardado de esta página (Firefox lo preguntaría con un aviso: ahí no)
+    try { if (s && navigator.storage && navigator.storage.persist && !/Firefox|FxiOS/.test(navigator.userAgent || "")) navigator.storage.persist().catch(() => {}); } catch (e) {}
+  };
+  var sesionRecordada = (tk) => { try { const d = JSON.parse(localStorage.getItem(SESION_DATOS_KEY) || "null"); return d && d.token === tk ? d : null; } catch (e) { return null; } };
+  // Errores de la página en el equipo de una asesora: quedan en el registro de uso (hasta 5 por visita) para poder verlos
+  var erroresAnotados = 0;
+  var anotarError = (msg, donde) => {
+    const m = String(msg || "");
+    if (!m || erroresAnotados >= 5 || /^Script error\.?$|ResizeObserver/i.test(m)) return;
+    erroresAnotados++;
+    rastrear("error", { msg: m.slice(0, 200), donde: String(donde || "").slice(0, 120) });
+  };
+  try {
+    window.addEventListener("error", (e) => { if (e && e.message) anotarError(e.message, String(e.filename || "").split("/").pop() + ":" + (e.lineno || 0)); });
+    window.addEventListener("unhandledrejection", (e) => { const r = e && e.reason; anotarError(r && (r.message || r), "promesa"); });
+  } catch (e) {}
   var ADMIN_KEY = "rw_admin_config_v1";
   var CATALOG_CACHE_KEY = "rw_catalogo_v2";
   try { localStorage.removeItem("rw_catalogo_v1"); } catch (e) {}
@@ -667,7 +686,7 @@
       let s = porTitulo[titulo];
       if (!s) {
         const d0 = def(titulo);
-        s = porTitulo[titulo] = { key: "sec-" + claveDe(titulo), titulo, familia: d0 && d0.familia || "", nota: d0 && d0.nota || "", fotos: d0 && Array.isArray(d0.fotos) ? d0.fotos.filter((m) => m && m.foto) : [], variantes: [], grupos: [], tambien: [], bloques: [], sinPrecio: [], total: 0, cuenta: 0, chip: "" };
+        s = porTitulo[titulo] = { key: "sec-" + claveDe(titulo), titulo, familia: d0 && d0.familia || "", nota: d0 && d0.nota || "", fotos: d0 && Array.isArray(d0.fotos) ? d0.fotos.filter((m) => m && m.foto) : [], equipo: d0 && Array.isArray(d0.equipo) ? d0.equipo.filter((m) => m && m.foto) : [], variantes: [], grupos: [], tambien: [], bloques: [], sinPrecio: [], total: 0, cuenta: 0, chip: "" };
         secciones.push(s);
       }
       const d = def(n);
@@ -842,7 +861,30 @@
       setVal(v);
       setStr(v.toString());
     };
-    return { val, str, setStr, alert, setAlert, set };
+    return { val, str, setStr, alert, setAlert, set, setVal };
+  };
+  // La caja de la inicial. Varias asesoras no sabían que se puede cambiar ni cómo confirmar (Nelson, 20/11/2026):
+  // dice «Toca el monto para cambiarlo», al tocar selecciona el número y, mientras se escribe, muestra un botón OK.
+  // Sigue valiendo la tecla Intro del teclado. onEscribir aplica el monto apenas es válido; onListo lo ajusta al salir.
+  var CajaInicial = ({ etiqueta, str, onEscribir, onListo, fijo, angosta }) => {
+    const [editando, setEditando] = useState(false);
+    const ref = useRef(null);
+    const ok = h("button", { type: "button", className: "cbox-ok" + (angosta ? " ancho" : ""), onMouseDown: (e) => e.preventDefault(), onClick: () => { if (ref.current) ref.current.blur(); } }, "OK");
+    return h("div", { className: `cbox editable ${editando ? "editando" : ""}`, onClick: (e) => { if (!fijo && e.target.tagName !== "INPUT" && e.target.tagName !== "BUTTON" && ref.current) ref.current.focus(); } },
+      h("span", { className: "cbox-label" }, etiqueta),
+      h("div", { className: "cbox-input" }, h("span", { className: "cur" }, "S/"),
+        h("input", { ref, type: "number", value: str, disabled: !!fijo, "aria-label": etiqueta, onChange: onEscribir,
+          onKeyDown: (e) => { if (e.key === "Enter") e.target.blur(); },
+          onFocus: (e) => {   // selecciona el número para que lo que se escriba lo reemplace; nunca después de que ya se empezó a escribir
+            setEditando(true);
+            const el = e.target, v0 = el.value;
+            const elegir = () => { try { if (document.activeElement === el && el.value === v0) el.select(); } catch (x) {} };
+            elegir(); setTimeout(elegir, 0); setTimeout(elegir, 120);
+          },
+          onBlur: (e) => { setEditando(false); onListo(e); } }),
+        !fijo && (editando ? !angosta && ok : h(PencilSvg, null))),
+      // en el recuadro angosto (Contado, al lado del saldo) el OK va debajo del monto, a todo el ancho: al costado tapaba el número
+      !fijo && (editando && angosta ? ok : h("span", { className: "cbox-ayuda" }, editando ? "Escribe el monto y toca OK" : "Toca el monto para cambiarlo")));
   };
   var PaymentBlock = ({ base, auto, baseCliente, comparativo, summaryMode, priceData, creditBreakdown, soloContado, pagoTotal, onState }) => {
     const isSolo = pagoTotal || Finanzas.esSoloContado(base);
@@ -852,10 +894,14 @@
     const [selectedTerm, setSelectedTerm] = useState(18);
     const contado = useInicial(isSolo ? base : minInicial);
     const credito = useInicial(minInicial);
+    const tocada = useRef(false);   // ¿ya cambió la inicial? Mientras no, es el 10 % del precio que está viendo (cliente o autocompra)
     useEffect(() => {
       const minC = isSolo ? base : minInicial;
-      contado.set(Math.max(minC, Math.min(contado.val, base)));
-      credito.set(Math.max(minInicial, Math.min(credito.val, Finanzas.maxInicialCredito(base, minInicial))));
+      if (tocada.current) {
+        contado.set(Math.max(minC, Math.min(contado.val, base)));
+        credito.set(Math.max(minInicial, Math.min(credito.val, Finanzas.maxInicialCredito(base, minInicial))));
+      } else { contado.set(minC); credito.set(minInicial); }
+      contado.setAlert(""); credito.setAlert("");   // los avisos hablaban del precio anterior (cliente o autocompra)
       if (!eligible && tab === "credito") setTab("contado");
     }, [base]);
     const saldoContado = Math.max(0, base - contado.val);
@@ -871,8 +917,26 @@
       const d = cuotas.map((o) => o.meses);
       if (d.length > 0 && !d.includes(selectedTerm)) setSelectedTerm(Math.max(...d));
     }, [cuotas, selectedTerm]);
-    const onKey = (e) => {
-      if (e.key === "Enter") e.target.blur();
+    // Una sola inicial: la que se pone en contado pasa a crédito (hasta el tope que deja el saldo mínimo por financiar) y al
+    // revés. Vuelve al 10 % solo al cerrar la ficha, que es cuando este bloque se arma de nuevo.
+    const topeCredito = Finanzas.maxInicialCredito(base, minInicial);
+    const pisoContado = isSolo ? base : minInicial;
+    const pasarACredito = (v) => {
+      if (!eligible) return;
+      credito.set(Math.max(minInicial, Math.min(v, topeCredito)));
+      credito.setAlert(v > topeCredito ? `En cr\xE9dito la inicial llega hasta ${formatMoney(topeCredito)}: el saldo m\xEDnimo a financiar es S/ ${CONFIG.capitalMinimoFinanciar.toLocaleString()}.` : "");
+    };
+    const pasarAContado = (v) => {
+      contado.set(Math.max(pisoContado, Math.min(v, base)));
+      contado.setAlert("");
+    };
+    // mientras se escribe, el monto se aplica apenas es válido (no hace falta confirmar para ver el cambio)
+    const escribir = (campo, min, max, pasar) => (e) => {
+      const t = e.target.value;
+      tocada.current = true;
+      campo.setStr(t);
+      const n = Number(t);
+      if (t !== "" && isFinite(n) && n >= min && n <= max) { campo.setVal(n); campo.setAlert(""); pasar(n); }
     };
     const blurContado = (e) => {
       let v = Number(e.target.value);
@@ -888,6 +952,7 @@
         v = base;
       } else contado.setAlert("");
       contado.set(v);
+      pasarACredito(v);
     };
     const blurCredito = (e) => {
       let v = Number(e.target.value);
@@ -903,6 +968,7 @@
         v = maxA;
       } else credito.setAlert("");
       credito.set(v);
+      pasarAContado(v);
     };
     const precioTotalCredito = () => {
       const o = cuotas.find((x) => x.meses === selectedTerm);
@@ -920,11 +986,11 @@
       if (!onState) return;
       onState({ auto: !!auto, tab, selectedTerm, eligible, soloContado: isSolo, inicialContado: contado.val, saldoContado, inicialCredito: credito.val, capitalCredito, cuotaSel, cuotaCliSel: selOpt && comparativo ? selOpt.cuotaCliente : 0, creditTotal, creditTotalCli, creditDesc, opciones: cuotas.map((o) => ({ meses: o.meses, cuota: comparativo ? o.cuotaAuto : o.cuota, cuotaCliente: comparativo ? o.cuotaCliente : null })) });
     }, [auto, tab, selectedTerm, eligible, isSolo, contado.val, saldoContado, credito.val, capitalCredito, cuotaSel, creditTotal, creditTotalCli, creditDesc, cuotas]);
-    return h(React.Fragment, null, summaryMode === "cliente" && tab === "contado" && h("div", { className: "price-block summary" }, pd.hasPromo && h("div", { className: "price-reg" }, "Precio Regular: ", formatMoney(pd.regularPrice)), h("div", { className: "price-lbl" }, "PRECIO CONTADO"), h("div", { className: "price-big" }, formatMoney(pd.cashPrice))), summaryMode === "auto" && tab === "contado" && h("div", { className: "auto-ticket summary" }, pd.hasPromo && h("div", { className: "tk-line strike" }, h("span", null, "Precio Regular"), h("span", null, formatMoney(pd.regularPrice))), h("div", { className: "tk-line" }, h("span", null, "Precio Contado"), h("span", null, formatMoney(pd.cashPrice))), h("div", { className: "tk-line discount" }, h("span", null, "Menos tu Descuento"), h("span", null, "- ", formatMoney(pd.descuento))), h("div", { className: "tk-total" }, h("span", null, "TU PRECIO (CONTADO)"), h("span", null, formatMoney(pd.autoPrice)))), h("div", { className: `pay-box ${auto ? "auto" : ""}` }, !soloContado && h("div", { className: `tab-bar ${auto ? "auto" : ""}` }, h("button", { className: `tab-btn ${tab === "contado" ? "on" : ""}`, onClick: () => setTab("contado") }, "Contado"), h("button", { className: `tab-btn ${tab === "credito" ? "on" : ""} ${!eligible ? "off" : ""}`, onClick: () => eligible && setTab("credito"), disabled: !eligible }, "Cr\xE9dito")), tab === "contado" && h("div", { className: "tab-content fade-in" }, isSolo && !pagoTotal && h("div", { className: `info-banner ${auto ? "indigo" : "blue"}` }, h(InfoSvg, null), h("span", null, "Al ser menor a S/ ", CONFIG.precioSoloContado, ", ", auto ? "tu inicial" : "la inicial", " debe ser el precio total.")), pagoTotal ? h("div", { className: "cbox" }, h("span", { className: "cbox-label" }, "Inicial (pago total)"), h("span", { className: "cbox-value" }, formatMoney(base))) : h("div", { className: "box-grid" }, h("div", { className: "cbox editable" }, h("span", { className: "cbox-label" }, auto ? "Tu Inicial" : "Inicial"), h("div", { className: "cbox-input" }, h("span", { className: "cur" }, "S/"), h("input", { type: "number", value: contado.str, onChange: (e) => contado.setStr(e.target.value), onBlur: blurContado, onKeyDown: onKey, disabled: isSolo }), !isSolo && h(PencilSvg, null))), h("div", { className: "cbox" }, h("span", { className: "cbox-label" }, auto ? "Tu Saldo C/Entrega" : "Saldo Contra Entrega"), h("span", { className: "cbox-value" }, formatMoney(saldoContado)))), h(AlertToast, { message: contado.alert, onDismiss: () => contado.setAlert("") })), tab === "credito" && h("div", { className: "tab-content fade-in" }, !eligible ? h("div", { className: "info-banner red" }, h(AlertSvg, null), h("span", null, "El m\xEDnimo saldo a financiar es de S/ ", CONFIG.capitalMinimoFinanciar.toLocaleString(), ". Aplica solo al contado.")) : h(React.Fragment, null, h("div", { className: "cbox editable" }, h("span", { className: "cbox-label" }, auto ? "Tu Inicial" : "Inicial"), h("div", { className: "cbox-input" }, h("span", { className: "cur" }, "S/"), h("input", { type: "number", value: credito.str, onChange: (e) => credito.setStr(e.target.value), onBlur: blurCredito, onKeyDown: onKey }), h(PencilSvg, null))), h("div", { className: "mini-hint" }, "Inicial m\xEDnima: ", formatMoney(minInicial), " \xB7 Se financia ", formatMoney(capitalCredito)), h(AlertToast, { message: credito.alert, onDismiss: () => credito.setAlert("") }), cuotas.length > 0 ? h(React.Fragment, null, h("div", { className: "installments-grid" }, cuotas.map((o) => {
+    return h(React.Fragment, null, summaryMode === "cliente" && tab === "contado" && h("div", { className: "price-block summary" }, pd.hasPromo && h("div", { className: "price-reg" }, "Precio Regular: ", formatMoney(pd.regularPrice)), h("div", { className: "price-lbl" }, "PRECIO CONTADO"), h("div", { className: "price-big" }, formatMoney(pd.cashPrice))), summaryMode === "auto" && tab === "contado" && h("div", { className: "auto-ticket summary" }, pd.hasPromo && h("div", { className: "tk-line strike" }, h("span", null, "Precio Regular"), h("span", null, formatMoney(pd.regularPrice))), h("div", { className: "tk-line" }, h("span", null, "Precio Contado"), h("span", null, formatMoney(pd.cashPrice))), h("div", { className: "tk-line discount" }, h("span", null, "Menos tu Descuento"), h("span", null, "- ", formatMoney(pd.descuento))), h("div", { className: "tk-total" }, h("span", null, "TU PRECIO (CONTADO)"), h("span", null, formatMoney(pd.autoPrice)))), h("div", { className: `pay-box ${auto ? "auto" : ""}` }, !soloContado && h("div", { className: `tab-bar ${auto ? "auto" : ""}` }, h("button", { className: `tab-btn ${tab === "contado" ? "on" : ""}`, onClick: () => setTab("contado") }, "Contado"), h("button", { className: `tab-btn ${tab === "credito" ? "on" : ""} ${!eligible ? "off" : ""}`, onClick: () => eligible && setTab("credito"), disabled: !eligible }, "Cr\xE9dito")), tab === "contado" && h("div", { className: "tab-content fade-in" }, isSolo && !pagoTotal && h("div", { className: `info-banner ${auto ? "indigo" : "blue"}` }, h(InfoSvg, null), h("span", null, "Al ser menor a S/ ", CONFIG.precioSoloContado, ", ", auto ? "tu inicial" : "la inicial", " debe ser el precio total.")), pagoTotal ? h("div", { className: "cbox" }, h("span", { className: "cbox-label" }, "Inicial (pago total)"), h("span", { className: "cbox-value" }, formatMoney(base))) : h("div", { className: "box-grid" }, h(CajaInicial, { etiqueta: auto ? "Tu Inicial" : "Inicial", str: contado.str, fijo: isSolo, angosta: true, onEscribir: escribir(contado, pisoContado, base, pasarACredito), onListo: blurContado }), h("div", { className: "cbox" }, h("span", { className: "cbox-label" }, auto ? "Tu Saldo C/Entrega" : "Saldo Contra Entrega"), h("span", { className: "cbox-value", key: "s" + saldoContado }, formatMoney(saldoContado)))), h(AlertToast, { message: contado.alert, onDismiss: () => contado.setAlert("") }), !soloContado && !eligible && !isSolo && h("div", { className: "sin-credito" }, "Solo al contado: para dar cr\xE9dito, el saldo a financiar debe ser de S/ ", CONFIG.capitalMinimoFinanciar.toLocaleString(), " o m\xE1s.")), tab === "credito" && h("div", { className: "tab-content fade-in" }, !eligible ? h("div", { className: "info-banner red" }, h(AlertSvg, null), h("span", null, "El m\xEDnimo saldo a financiar es de S/ ", CONFIG.capitalMinimoFinanciar.toLocaleString(), ". Aplica solo al contado.")) : h(React.Fragment, null, h(CajaInicial, { etiqueta: auto ? "Tu Inicial" : "Inicial", str: credito.str, onEscribir: escribir(credito, minInicial, topeCredito, pasarAContado), onListo: blurCredito }), h("div", { className: "mini-hint" }, "Inicial m\xEDnima: ", formatMoney(minInicial), " \xB7 Se financia ", formatMoney(capitalCredito)), h(AlertToast, { message: credito.alert, onDismiss: () => credito.setAlert("") }), cuotas.length > 0 ? h(React.Fragment, null, h("div", { className: "installments-grid" }, cuotas.map((o) => {
       const c = comparativo ? o.cuotaAuto : o.cuota;
       const orig = comparativo ? o.cuotaCliente : null;
-      return h("button", { key: o.meses, className: `inst-btn ${auto ? "auto" : ""} ${selectedTerm === o.meses ? "sel" : ""}`, onClick: () => setSelectedTerm(o.meses) }, h("span", { className: "inst-m" }, o.meses, "m"), h("span", { className: "inst-v" }, formatMoney(c)), orig != null && h("span", { className: "inst-orig" }, formatMoney(orig)));
-    })), hayOcultas && h("div", { className: "info-banner orange sm" }, h(InfoSvg, null), h("span", null, "Se muestran las opciones con cuotas mayores a S/ ", CONFIG.cuotaMinimaPermitida, " que es el valor m\xEDnimo permitido de la cuota.")), !summaryMode && !creditBreakdown && precioTotalCredito() && h("div", { className: `credit-total ${auto ? "auto" : ""}` }, h("span", { className: "ct-label" }, auto ? "Tu" : "Precio", " Total al Cr\xE9dito (", selectedTerm, "m)"), h("span", { className: "ct-value" }, formatMoney(precioTotalCredito()))), (summaryMode || creditBreakdown) && creditTotal != null && h("div", { className: "credit-mini" }, auto && comparativo && creditTotalCli != null ? h(React.Fragment, null, h("div", { className: "cm-row" }, h("span", null, "Precio al cr\xE9dito"), h("span", null, formatMoney(creditTotalCli))), h("div", { className: "cm-row" }, h("span", null, "Total ahorro"), h("span", { className: "cm-save" }, "- ", formatMoney(creditDesc))), h("div", { className: "cm-row hl" }, h("span", null, "Tu total a pagar ", h("em", null, "(inicial + ", selectedTerm, " cuotas)")), h("span", null, formatMoney(creditTotal)))) : h("div", { className: "cm-row hl" }, h("span", null, "Total a pagar ", h("em", null, "(inicial + ", selectedTerm, " cuotas)")), h("span", null, formatMoney(creditTotal))))) : h("div", { className: "info-banner red" }, h(AlertSvg, null), h("span", null, "El m\xEDnimo saldo a financiar es S/ ", CONFIG.capitalMinimoFinanciar.toLocaleString(), ". Disminuya la inicial."))))));
+      return h("button", { key: o.meses, className: `inst-btn ${auto ? "auto" : ""} ${selectedTerm === o.meses ? "sel" : ""}`, onClick: () => setSelectedTerm(o.meses) }, h("span", { className: "inst-m" }, o.meses, " meses"), orig != null && h("span", { className: "inst-orig" }, formatMoney(orig)), h("span", { className: "inst-v" }, formatMoney(c)));
+    })), hayOcultas && h("div", { className: "info-banner orange sm" }, h(InfoSvg, null), h("span", null, "Se muestran las opciones con cuotas mayores a S/ ", CONFIG.cuotaMinimaPermitida, " que es el valor m\xEDnimo permitido de la cuota.")), !summaryMode && !creditBreakdown && precioTotalCredito() && h("div", { className: `credit-total ${auto ? "auto" : ""}` }, h("span", { className: "ct-label" }, auto ? "Tu" : "Precio", " Total al Cr\xE9dito (", selectedTerm, "m)"), h("span", { className: "ct-value" }, formatMoney(precioTotalCredito()))), (summaryMode || creditBreakdown) && creditTotal != null && h("div", { className: "credit-mini" }, auto && comparativo && creditTotalCli != null ? h(React.Fragment, null, h("div", { className: "cm-row" }, h("span", null, "Precio al cr\xE9dito"), h("span", null, formatMoney(creditTotalCli))), h("div", { className: "cm-row ahorro" }, h("span", null, "Total ahorro"), h("span", { className: "cm-save" }, "- ", formatMoney(creditDesc))), h("div", { className: "cm-row hl" }, h("span", null, "Tu total a pagar ", h("em", null, "(inicial + ", selectedTerm, " cuotas)")), h("span", null, formatMoney(creditTotal)))) : h("div", { className: "cm-row hl" }, h("span", null, "Total a pagar ", h("em", null, "(inicial + ", selectedTerm, " cuotas)")), h("span", null, formatMoney(creditTotal))))) : h("div", { className: "info-banner red" }, h(AlertSvg, null), h("span", null, "El m\xEDnimo saldo a financiar es S/ ", CONFIG.capitalMinimoFinanciar.toLocaleString(), ". Disminuya la inicial."))))));
   };
   // ---- Catálogo (Repuestos y Servicios): filas compactas con el precio del cliente a la vista
   var ChevSvg = ({ s = 16 }) => h("svg", { width: s, height: s, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2.4, strokeLinecap: "round", strokeLinejoin: "round" }, h("polyline", { points: "9 6 15 12 9 18" }));
@@ -961,14 +1027,23 @@
   };
   // Si la sección trae su rejilla de fotos (cot_grupos.fotos), sus filas van sin foto: una foto suelta en una fila haría
   // pensar que ese precio es solo para ese modelo (el mantenimiento de cocina es el mismo para los cuatro)
+  // La foto del equipo (cot_grupos.equipo) ayuda a reconocer de qué producto son los repuestos: una va al costado del
+  // título; dos o tres (modelos o generaciones), en fila bajo el título, cada una con su nombre.
+  var rutaFoto = (f) => /^(https?:)?\//.test(f) ? f : "/promociones/" + f + ".webp";
+  var formaFoto = (m) => { const r = m.w && m.h ? m.w / m.h : 1; return r > 1.6 ? "ancha" : r < 0.75 ? "alta" : ""; };
   var SeccionCatalogo = ({ s, conFamilia, etiquetaLista, onOpen, imageOverrides }) => h("section", { className: "cat-sec", id: s.key },
-    h("div", { className: "cat-sec-head" },
-      conFamilia && s.familia && h("span", { className: "cat-sec-fam" }, s.familia),
-      h("div", { className: "cat-sec-tit" }, h("h2", null, s.titulo), h("span", { className: "cat-count" }, s.cuenta)),
-      s.nota && h("p", { className: "cat-sec-nota" }, s.nota),
-      s.variantes.length > 0 && h("div", { className: "cat-sec-vars" }, s.variantes.map((v) => h("span", { key: v.nombre }, h("strong", null, v.nombre), v.nota ? " \xB7 " + v.nota.replace(/\.$/, "") : "")))),
+    h("div", { className: "cat-sec-head" + (s.equipo && s.equipo.length === 1 ? " con-equipo" : "") },
+      h("div", { className: "cat-sec-txt" },
+        conFamilia && s.familia && h("span", { className: "cat-sec-fam" }, s.familia),
+        h("div", { className: "cat-sec-tit" }, h("h2", null, s.titulo), h("span", { className: "cat-count" }, s.cuenta)),
+        s.nota && h("p", { className: "cat-sec-nota" }, s.nota),
+        s.variantes.length > 0 && h("div", { className: "cat-sec-vars" }, s.variantes.map((v) => h("span", { key: v.nombre }, h("strong", null, v.nombre), v.nota ? " \xB7 " + v.nota.replace(/\.$/, "") : "")))),
+      s.equipo && s.equipo.length === 1 && h("img", { className: "cat-eq-foto " + formaFoto(s.equipo[0]), src: rutaFoto(s.equipo[0].foto), alt: s.equipo[0].nombre || s.titulo, width: s.equipo[0].w || null, height: s.equipo[0].h || null, loading: "lazy", onError: (e) => { e.target.style.display = "none"; } })),
+    s.equipo && s.equipo.length > 1 && h("div", { className: "cat-equipos n" + Math.min(s.equipo.length, 4) }, s.equipo.map((m) => h("figure", { key: m.foto, className: "cat-equipo" },
+      h("img", { src: rutaFoto(m.foto), alt: m.nombre || s.titulo, width: m.w || null, height: m.h || null, loading: "lazy", onError: (e) => { e.target.style.visibility = "hidden"; } }),
+      m.nombre && h("figcaption", null, m.nombre)))),
     s.fotos && s.fotos.length > 0 && h("div", { className: "cat-modelos" }, s.fotos.map((m) => h("figure", { key: m.foto, className: "cat-modelo" },
-      h("img", { src: /^(https?:)?\//.test(m.foto) ? m.foto : "/promociones/" + m.foto + ".webp", alt: m.nombre || "", width: 400, height: 300, loading: "lazy", onError: (e) => { e.target.style.visibility = "hidden"; } }),
+      h("img", { src: rutaFoto(m.foto), alt: m.nombre || "", width: 400, height: 300, loading: "lazy", onError: (e) => { e.target.style.visibility = "hidden"; } }),
       (m.nombre || m.nota) && h("figcaption", null, m.nombre && h("strong", null, m.nombre), m.nota && h("span", null, m.nota))))),
     s.bloques.map((b) => h("div", { className: "cat-blo", key: b.sub || "_" },
       (b.sub || b.foto) && h("div", { className: "cat-blo-head" },
@@ -1032,39 +1107,144 @@
   // cotización y dos videos). Ahí va solo el archivo; en Android el texto llega como leyenda.
   var esIOS = () => { const ua = navigator.userAgent || ""; return /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && (navigator.maxTouchPoints || 0) > 1); };
   var paraCompartir = (file, title, text) => esIOS() ? { files: [file] } : { files: [file], title, text };
-  var BotonVideoWa = ({ src, name, shareText, pill }) => {
-    const [busy, setBusy] = useState(false);
-    const [msg, setMsg] = useState("");
-    const enviar = async (e) => {
-      if (e) e.stopPropagation();
-      const texto = (shareText || "").trim() || ("Mira este producto: " + (name || "")).trim();
-      const limpio = (name || "video").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-") || "video";
-      setBusy(true);
-      setMsg("Preparando el video\u2026");
+  // ---- Envío del video por WhatsApp. El video se baja entero y se pasa a las opciones de compartir del celular.
+  // Lo que se aprendió (20/11/2026): si la bajada tarda más de unos segundos, el celular ya no deja compartir «solo»
+  // (hace falta un toque nuevo) y antes se terminaba abriendo WhatsApp con el texto y un enlace: por eso ahora queda
+  // «Video listo: toca para enviar». Para que tarde menos: lo bajado se guarda en el equipo (la próxima vez es al
+  // instante) y, con wifi o en computadora, se adelanta apenas se abre la ficha.
+  var CACHE_VIDEOS = "rw-videos-v1", IDX_VIDEOS = "rw_videos_idx_v1", TOPE_VIDEOS = 160 * 1048576;
+  var videoListo = { src: "", file: null, origen: "" };   // el último video preparado en esta visita
+  var videoEnCurso = {};                                    // bajadas en marcha, por dirección
+  var nombreVideo = (name) => ((name || "video").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-") || "video") + ".mp4";
+  var leerIdxVideos = () => { try { const v = JSON.parse(localStorage.getItem(IDX_VIDEOS) || "[]"); return Array.isArray(v) ? v : []; } catch (e) { return []; } };
+  var anotarVideoGuardado = async (cache, src, bytes) => {
+    try {
+      let idx = leerIdxVideos().filter((x) => x && x.u !== src);
+      idx.push({ u: src, n: bytes, t: Date.now() });
+      idx.sort((a, b) => b.t - a.t);
+      let suma = 0; const quedan = [];
+      for (const x of idx) { suma += x.n || 0; if (quedan.length < 12 && (suma <= TOPE_VIDEOS || !quedan.length)) quedan.push(x); else if (cache) { try { await cache.delete(x.u); } catch (e) {} } }
+      localStorage.setItem(IDX_VIDEOS, JSON.stringify(quedan));
+    } catch (e) {}
+  };
+  var bajarVideo = async (src, alAvanzar) => {
+    let cache = null;
+    try { cache = window.caches ? await caches.open(CACHE_VIDEOS) : null; } catch (e) { cache = null; }
+    if (cache) {
       try {
-        const r = await fetch(src, { mode: "cors" });
-        const blob = await r.blob();
-        const file = new File([blob], limpio + ".mp4", { type: blob.type || "video/mp4" });
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          await navigator.share(paraCompartir(file, name || "Video", texto));
-          setMsg(""); setBusy(false);
-          return;
-        }
-      } catch (err) {
-        if (err && err.name === "AbortError") { setMsg(""); setBusy(false); return; }
-      }
-      setMsg(""); setBusy(false);
+        const g = await cache.match(src);
+        if (g) { const b = await g.blob(); if (b && b.size > 1e3) { anotarVideoGuardado(cache, src, b.size); return { blob: b, origen: "guardado" }; } }
+      } catch (e) {}
+    }
+    const r = await fetch(src, { mode: "cors" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const total = Number(r.headers.get("content-length")) || 0, tipo = r.headers.get("content-type") || "video/mp4";
+    let blob;
+    if (total && r.body && r.body.getReader) {
+      const lector = r.body.getReader(), partes = [];
+      let n = 0;
+      for (;;) { const t = await lector.read(); if (t.done) break; partes.push(t.value); n += t.value.length; if (alAvanzar) alAvanzar(Math.min(1, n / total), total); }
+      blob = new Blob(partes, { type: tipo });
+    } else blob = await r.blob();
+    if (cache) { try { await cache.put(src, new Response(blob, { headers: { "content-type": blob.type || "video/mp4" } })); await anotarVideoGuardado(cache, src, blob.size); } catch (e) {} }
+    return { blob, origen: "red" };
+  };
+  var prepararVideo = (src, name, alAvanzar) => {
+    if (videoListo.src === src && videoListo.file) return Promise.resolve(videoListo.file);
+    let c = videoEnCurso[src];
+    if (!c) {
+      c = videoEnCurso[src] = { oyentes: [], avance: 0, total: 0 };
+      c.promesa = bajarVideo(src, (f, total) => { c.avance = f; c.total = total; c.oyentes.forEach((o) => { try { o(f, total); } catch (e) {} }); }).then((d) => {
+        const file = new File([d.blob], nombreVideo(name), { type: d.blob.type || "video/mp4" });
+        videoListo = { src, file, origen: d.origen };
+        delete videoEnCurso[src];
+        return file;
+      }, (e) => { delete videoEnCurso[src]; throw e; });
+    }
+    if (alAvanzar) { c.oyentes.push(alAvanzar); if (c.avance) alAvanzar(c.avance, c.total); }
+    return c.promesa;
+  };
+  // ¿Se puede adelantar la bajada sin gastarle datos a la asesora? Solo con wifi (Android lo dice) o en computadora
+  var redSinCosto = () => {
+    try {
+      const c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+      if (c && c.saveData) return false;
+      if (c && c.type) return c.type === "wifi" || c.type === "ethernet";
+      return !/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
+    } catch (e) { return false; }
+  };
+  var puedeAdjuntarVideo = () => { try { return !!(navigator.canShare && navigator.canShare({ files: [new File(["x"], "video.mp4", { type: "video/mp4" })] })); } catch (e) { return false; } };
+  var BotonVideoWa = ({ src, name, shareText, pill, esArchivo, codigo, precarga }) => {
+    const [estado, setEstado] = useState("");   // "" · "bajando" · "listo" (falta un toque) · "fallo"
+    const [pct, setPct] = useState(0);
+    const [msg, setMsg] = useState("");
+    const vivo = useRef(true);
+    useEffect(() => () => { vivo.current = false; }, []);
+    const archivo = esArchivo !== false && /\.(mp4|webm|ogg|mov|m4v)(\?.*)?$/i.test(src || "");
+    const texto = (shareText || "").trim() || ("Mira este producto: " + (name || "")).trim();
+    useEffect(() => {
+      if (!precarga || !archivo || !redSinCosto() || !puedeAdjuntarVideo()) return;
+      const t = setTimeout(() => { prepararVideo(src, name).catch(() => {}); }, 1500);
+      return () => clearTimeout(t);
+    }, [src]);
+    useEffect(() => {
+      if (!msg || estado === "bajando" || estado === "listo") return;
+      const t = setTimeout(() => { if (vivo.current) { setMsg(""); if (estado === "fallo") setEstado(""); } }, 9e3);
+      return () => clearTimeout(t);
+    }, [msg, estado]);
+    const anotar = (resultado, extra) => rastrear("video", Object.assign({ accion: "enviar", resultado, codigo: codigo || "", nombre: name || "" }, extra || {}));
+    const enlace = (e) => {   // WhatsApp directo, con el texto y la dirección del video
+      if (e) e.stopPropagation();
       window.open("https://wa.me/?text=" + encodeURIComponent(texto + "\n" + src), "_blank");
     };
+    const enviar = async (e) => {
+      if (e) e.stopPropagation();
+      if (estado === "bajando") return;
+      const t0 = Date.now();
+      if (!archivo || !puedeAdjuntarVideo()) {   // un enlace de YouTube, o un navegador que no adjunta archivos: va el enlace, en este mismo toque
+        enlace();
+        if (archivo) setMsg("Tu navegador no deja adjuntar el video: se env\xEDa el enlace.");
+        anotar(archivo ? "enlace_sin_adjuntar" : "enlace");
+        return;
+      }
+      let paso = "bajar";
+      try {
+        let file = videoListo.src === src ? videoListo.file : null;
+        const yaEstaba = !!file;
+        if (!file) {
+          setEstado("bajando"); setPct(0); setMsg("");
+          file = await prepararVideo(src, name, (f) => { if (vivo.current) setPct(Math.round(f * 100)); });
+          if (!vivo.current) { anotar("cerro_antes", { ms: Date.now() - t0, mb: Math.round(file.size / 104857.6) / 10 }); return; }   // cerró la ficha mientras bajaba: el video queda guardado para la próxima
+        }
+        paso = "compartir";
+        let r = "ok";
+        try { await navigator.share(paraCompartir(file, name || "Video", texto)); }
+        catch (err) { if (err && err.name === "AbortError") r = "cancelado"; else if (err && err.name === "NotAllowedError") r = "otro_toque"; else throw err; }
+        if (vivo.current) {
+          if (r === "otro_toque") { setEstado("listo"); setMsg("El video ya est\xE1 listo. Toca \xABEnviar\xBB otra vez."); }
+          else { setEstado(""); setMsg(""); }
+        }
+        anotar(r, { ms: Date.now() - t0, mb: Math.round(file.size / 104857.6) / 10, origen: yaEstaba ? "listo" : videoListo.origen });
+      } catch (err) {
+        if (vivo.current) { setEstado("fallo"); setMsg(paso === "bajar" ? "No se pudo preparar el video. Revisa tu conexi\xF3n." : "Tu celular no dej\xF3 compartir el video."); }
+        anotar("error", { paso, error: String(err && (err.name ? err.name + ": " : "") + (err.message || err) || "").slice(0, 160) });
+      }
+    };
+    const rotulo = estado === "bajando" ? (pct ? "Preparando " + pct + "%" : "Preparando\u2026") : estado === "listo" ? "Video listo: enviar" : "Enviar video";
     return h(React.Fragment, null,
       pill
-        ? h("button", { className: "vid-wa", onClick: enviar, disabled: busy, title: "Enviar el video por WhatsApp" },
-            h(WhatsappSvg, { s: 17 }), h("span", null, busy ? "Preparando\u2026" : "Enviar video"))
-        : h("button", { className: "fv-btn fv-wa", onClick: enviar, disabled: busy, title: "Enviar el video por WhatsApp", "aria-label": "Enviar el video por WhatsApp" },
+        ? h("button", { className: `vid-wa ${estado}`, onClick: enviar, disabled: estado === "bajando", title: "Enviar el video por WhatsApp" },
+            h(WhatsappSvg, { s: 17 }), h("span", null, rotulo))
+        : h("button", { className: `fv-btn fv-wa ${estado}`, onClick: enviar, disabled: estado === "bajando", title: "Enviar el video por WhatsApp", "aria-label": rotulo },
             h(WhatsappSvg, { s: 18 })),
-      msg && h("div", { className: "fv-msg" }, msg));
+      (estado === "bajando" || msg) && h("div", { className: `vid-estado ${pill ? "" : "en-video"}`, role: "status", onClick: (e) => e.stopPropagation() },
+        estado === "bajando" ? h(React.Fragment, null,
+          h("span", null, "Preparando el video\u2026 ", pct ? pct + "%" : ""),
+          h("span", { className: "vid-barra" }, h("i", { style: { width: Math.max(4, pct) + "%" } })))
+          : h("span", null, msg),
+        (estado === "bajando" || estado === "fallo") && h("button", { type: "button", className: "vid-enlace", onClick: enlace }, estado === "bajando" ? "\xBFDemora? Enviar solo el enlace" : "Enviar el enlace por WhatsApp")));
   };
-  var FileVideoPlayer = ({ src, name, shareText, onBack }) => {
+  var FileVideoPlayer = ({ src, name, shareText, codigo, onBack }) => {
     const vidRef = useRef(null);
     const maximizar = () => {
       const v = vidRef.current;
@@ -1076,58 +1256,7 @@
         else if (v.webkitSetPresentationMode) v.webkitSetPresentationMode("fullscreen");
       } catch (e) {}
     };
-    const [busy, setBusy] = useState(false);
-    const [msg, setMsg] = useState("");
-    const safe = (name || "video").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-") || "video";
-    const filename = safe + ".mp4";
-    const getFile = async () => {
-      const r = await fetch(src, { mode: "cors" });
-      const blob = await r.blob();
-      return new File([blob], filename, { type: blob.type || "video/mp4" });
-    };
-    const download = async () => {
-      setBusy(true);
-      setMsg("Descargando\u2026");
-      try {
-        const file = await getFile();
-        const url = URL.createObjectURL(file);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 5e3);
-      } catch (e) {
-        window.open(src, "_blank");
-      }
-      setMsg("");
-      setBusy(false);
-    };
-    const sendWhatsapp = async () => {
-      const text = (shareText || "").trim() || ("Mira este producto: " + (name || "")).trim();
-      setBusy(true);
-      setMsg("Preparando\u2026");
-      try {
-        const file = await getFile();
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          await navigator.share(paraCompartir(file, name || "Video", text));
-          setMsg("");
-          setBusy(false);
-          return;
-        }
-      } catch (e) {
-        if (e && e.name === "AbortError") {
-          setMsg("");
-          setBusy(false);
-          return;
-        }
-      }
-      setMsg("");
-      setBusy(false);
-      window.open("https://wa.me/?text=" + encodeURIComponent(text + "\n" + src), "_blank");
-    };
-    return h("div", { className: "fv-wrap" }, h("video", { ref: vidRef, src, controls: true, autoPlay: true, playsInline: true, controlsList: "nodownload noplaybackrate", disablePictureInPicture: true, className: "fv-video" }), h("div", { className: "fv-bar" }, onBack && h("button", { className: "fv-mini", onClick: onBack, title: "Volver a la imagen" }, h(XSvg, { s: 15 })), h("div", { className: "fv-bar-actions" }, h("button", { className: "fv-btn fv-full", onClick: maximizar, title: "Pantalla completa", "aria-label": "Pantalla completa" }, h(ExpandSvg, { s: 19 })), h(BotonVideoWa, { src, name, shareText }))), msg && h("div", { className: "fv-msg" }, msg));
+    return h("div", { className: "fv-wrap" }, h("video", { ref: vidRef, src, controls: true, autoPlay: true, playsInline: true, controlsList: "nodownload noplaybackrate", disablePictureInPicture: true, className: "fv-video" }), h("div", { className: "fv-bar" }, onBack && h("button", { className: "fv-mini", onClick: onBack, title: "Volver a la imagen" }, h(XSvg, { s: 15 })), h("div", { className: "fv-bar-actions" }, h("button", { className: "fv-btn fv-full", onClick: maximizar, title: "Pantalla completa", "aria-label": "Pantalla completa" }, h(ExpandSvg, { s: 19 })), h(BotonVideoWa, { src, name, shareText, codigo, esArchivo: true }))));
   };
   var YouTubePlayer = ({ id, onBack }) => {
     const wrapRef = useRef(null);
@@ -1190,58 +1319,212 @@
       onBack();
     } }, h(XSvg, { s: 13 }), " Imagen"), h("button", { className: "yt-btn yt-fs", onClick: toggleFs, title: isFs ? "Reducir" : "Maximizar" }, isFs ? h(MinimizeSvg, null) : h(MaximizeSvg, null)), h("button", { className: "yt-btn yt-mute", onClick: toggleMute, title: muted ? "Activar sonido" : "Silenciar" }, muted ? h(VolMuteSvg, null) : h(VolOnSvg, null)));
   };
+  // ---- Cotización como imagen. Se dibuja directo en un lienzo: antes se convertía HTML en imagen con una librería, que en
+  // algunos celulares tardaba o fallaba («No se pudo generar la imagen»). Lleva siempre el contado y, si el producto tiene
+  // crédito, todas las cuotas; en autocompra, la cuota del cliente tachada antes de la del asesor. `m` son solo datos
+  // (los arma la ficha) y `foto` la imagen del producto ya cargada con permiso para copiarla (o null).
+  var CopySvg = ({ s = 16 }) => h("svg", { width: s, height: s, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2.2, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": "true" }, h("rect", { x: 9, y: 9, width: 12, height: 12, rx: 2 }), h("path", { d: "M5 15V5a2 2 0 0 1 2-2h10" }));
+  var FUENTE_COT = "'DM Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif";
+  var fuentesCotizacion = () => {
+    try {
+      if (!document.fonts || !document.fonts.load) return Promise.resolve();
+      return Promise.race([Promise.all(["500", "600", "700", "800"].map((w) => document.fonts.load(w + " 16px 'DM Sans'"))).catch(() => {}), new Promise((r) => setTimeout(r, 700))]);
+    } catch (e) { return Promise.resolve(); }
+  };
+  var lienzoABlob = (c) => new Promise((res, rej) => { try { c.toBlob((b) => b ? res(b) : rej(new Error("sin imagen")), "image/png"); } catch (e) { rej(e); } });
+  var dibujarCotizacion = (m, foto, escala) => {
+    const W = 520, M = 22, AN = W - 2 * M, S = escala || 2;
+    const C = { tinta: "#0f172a", texto: "#334155", suave: "#64748b", tenue: "#94a3b8", linea: "#e1e6ed", azul: "#1d4ed8", verde: "#047857", fondo: "#f6f8fa" };
+    const lienzo = document.createElement("canvas");
+    const x = lienzo.getContext("2d");
+    const F = (peso, tam) => peso + " " + tam + "px " + FUENTE_COT;
+    const esp = (v) => { try { x.letterSpacing = v + "px"; } catch (e) {} };
+    const mide = (t, f, e) => { x.font = f; esp(e || 0); const w = x.measureText(t).width; esp(0); return w; };
+    const partir = (t, f, max, tope) => {
+      const pal = String(t || "").split(/\s+/).filter(Boolean), lineas = [];
+      let l = "";
+      pal.forEach((q) => { const pr = l ? l + " " + q : q; if (!l || mide(pr, f) <= max) l = pr; else { lineas.push(l); l = q; } });
+      if (l) lineas.push(l);
+      if (tope && lineas.length > tope) lineas.length = tope;
+      const u = lineas.length - 1;
+      if (u >= 0 && mide(lineas[u], f) > max || (tope && pal.join(" ").length > lineas.join(" ").length)) {
+        let c = lineas[u];
+        while (c.length > 1 && mide(c + "\u2026", f) > max) c = c.slice(0, -1);
+        lineas[u] = c.trim() + "\u2026";
+      }
+      return lineas;
+    };
+    const caja = (a, b, w, h2, r) => { x.beginPath(); if (x.roundRect) x.roundRect(a, b, w, h2, r); else { x.moveTo(a + r, b); x.arcTo(a + w, b, a + w, b + h2, r); x.arcTo(a + w, b + h2, a, b + h2, r); x.arcTo(a, b + h2, a, b, r); x.arcTo(a, b, a + w, b, r); x.closePath(); } };
+    const txt = (t, px, py, f, color, o) => {   // o: { der: alineado a la derecha, esp: espaciado entre letras, tachado }
+      o = o || {};
+      x.font = f; x.fillStyle = color; x.textBaseline = "alphabetic"; x.textAlign = o.der ? "right" : "left"; esp(o.esp || 0);
+      x.fillText(t, px, py);
+      const w = x.measureText(t).width;
+      esp(0);
+      if (o.tachado) { const tam = parseFloat(f.split(" ")[1]); x.strokeStyle = color; x.lineWidth = Math.max(1, tam / 12); x.beginPath(); x.moveTo(o.der ? px - w - 1 : px - 1, py - tam * 0.3); x.lineTo(o.der ? px + 1 : px + w + 1, py - tam * 0.3); x.stroke(); }
+      x.textAlign = "left";
+      return w;
+    };
+    const pasos = [];
+    const pon = (alto, pinta) => pasos.push({ alto, pinta });
+    // cabecera con la marca y la fecha
+    pon(54, (y) => { x.fillStyle = C.tinta; x.fillRect(0, y, W, 54); txt("RENA WARE", M, y + 34, F(800, 19), "#fff", { esp: 2.3 }); txt(m.fecha, W - M, y + 33, F(600, 13), "#cbd5e1", { der: true }); });
+    // foto: las de los especiales (anchas, traen los productos y el regalo) van a todo el ancho
+    if (foto && foto.naturalWidth && foto.naturalHeight) {
+      // a la foto de un producto sobre fondo blanco se le quita el margen, para que el producto salga más grande
+      let rec = null;
+      try {
+        const n = 64, c2 = document.createElement("canvas");
+        c2.width = n; c2.height = n;
+        const g = c2.getContext("2d");
+        g.fillStyle = "#fff"; g.fillRect(0, 0, n, n); g.drawImage(foto, 0, 0, n, n);
+        const d = g.getImageData(0, 0, n, n).data;
+        let x0 = n, y0 = n, x1 = -1, y1 = -1;
+        for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { const k = (j * n + i) * 4; if (d[k] < 243 || d[k + 1] < 243 || d[k + 2] < 243) { if (i < x0) x0 = i; if (i > x1) x1 = i; if (j < y0) y0 = j; if (j > y1) y1 = j; } }
+        if (x1 >= 0 && ((x0 + n - 1 - x1) / n > 0.12 || (y0 + n - 1 - y1) / n > 0.12)) {
+          const fw = foto.naturalWidth / n, fh = foto.naturalHeight / n;
+          const sx = Math.max(0, x0 - 1) * fw, sy = Math.max(0, y0 - 1) * fh;
+          rec = { sx, sy, sw: Math.min(n, x1 + 2) * fw - sx, sh: Math.min(n, y1 + 2) * fh - sy };
+        }
+      } catch (e) { rec = null; }
+      const o = rec || { sx: 0, sy: 0, sw: foto.naturalWidth, sh: foto.naturalHeight };
+      const asp = o.sw / o.sh, plena = !rec && asp > 1.1;   // plena: foto que llena su marco (los especiales, las piezas): va a todo el ancho
+      const pad = plena ? 0 : 20;
+      const alto = Math.round(Math.max(190, Math.min((W - 2 * pad) / asp + 2 * pad, plena ? (m.auto ? 384 : 440) : 330)));
+      pon(alto, (y) => {
+        x.fillStyle = "#fff"; x.fillRect(0, y, W, alto);
+        let w = W - 2 * pad, h2 = w / asp;
+        if (h2 > alto - 2 * pad) { h2 = alto - 2 * pad; w = h2 * asp; }
+        x.drawImage(foto, o.sx, o.sy, o.sw, o.sh, (W - w) / 2, y + (alto - h2) / 2, w, h2);
+        x.fillStyle = C.linea; x.fillRect(0, y + alto - 1, W, 1);
+      });
+    }
+    // nombre, código y a quién es el precio
+    const fNom = F(800, 21), nom = partir(m.nombre, fNom, AN, 4);
+    pon(16 + nom.length * 26, (y) => nom.forEach((l, i) => txt(l, M, y + 36 + i * 26, fNom, C.tinta)));
+    const fChip = F(800, 12), tChip = String(m.chip || "").toUpperCase(), wChip = mide(tChip, fChip, 0.7) + 26;
+    const cod = partir(m.codigo, F(600, 13.5), AN - wChip - 12, 1)[0] || "";
+    pon(46, (y) => {
+      txt(cod, M, y + 25, F(600, 13.5), C.suave);
+      caja(W - M - wChip, y + 7, wChip, 27, 13.5);
+      x.fillStyle = m.auto ? C.tinta : "#eef4ff"; x.fill();
+      if (!m.auto) { x.strokeStyle = "#c7d7fe"; x.lineWidth = 1; x.stroke(); }
+      txt(tChip, W - M - wChip + 13, y + 25, fChip, m.auto ? "#fff" : C.azul, { esp: 0.7 });
+    });
+    // bloques: «Al contado» y «Al crédito»
+    (m.bloques || []).forEach((b) => {
+      const P = 16, IN = AN - 2 * P, esCred = b.tipo === "credito";
+      const filas = b.filas || [], pie = b.pie || [], cuotas = b.cuotas || [];
+      const hTit = b.titulo ? 32 : 0, hFilas = filas.length * 27;
+      const hTot = b.total ? (filas.length ? 10 : 0) + 40 + (b.total.nota ? 18 : 0) : 0;
+      const hPie = pie.length ? 12 + pie.length * 27 : 0;
+      const gap = 8, cw = (IN - 2 * gap) / 3, fV = F(800, 18), fA = F(600, 12.5);
+      const conAntes = cuotas.some((c) => c.antes);
+      const enLinea = cuotas.every((c) => !c.antes || mide(c.antes, fA) + 6 + mide(c.v, fV) <= cw - 20);   // la tachada cabe al lado: si no, va arriba
+      const ch = conAntes && !enLinea ? 76 : 58, nf = Math.ceil(cuotas.length / 3);
+      const hCuo = cuotas.length ? 6 + nf * ch + (nf - 1) * gap : 0;
+      const alto = P + hTit + hFilas + hTot + hPie + hCuo + P - 4;
+      pon(alto + 12, (y) => {
+        caja(M, y, AN, alto, 14); x.fillStyle = esCred ? C.fondo : "#fff"; x.fill(); x.strokeStyle = C.linea; x.lineWidth = 1; x.stroke();
+        const izq = M + P, der = W - M - P;
+        let cy = y + P;
+        if (b.titulo) {
+          txt(b.titulo.toUpperCase(), izq, cy + 13, F(800, 12.5), C.tinta, { esp: 1.4 });
+          if (b.nota) txt(b.nota, der, cy + 13, F(600, 13), C.suave, { der: true });
+          x.fillStyle = C.linea; x.fillRect(izq, cy + 22, IN, 1);
+          cy += hTit;
+        }
+        filas.forEach((f) => {
+          const tach = f.estilo === "tachado";
+          txt(f.t, izq, cy + 18, F(600, 15), C.texto);
+          txt(f.v, der, cy + 18, esCred ? F(800, 16) : F(tach ? 600 : 700, 15), tach ? C.tenue : f.estilo === "verde" ? C.verde : C.tinta, { der: true, tachado: tach });
+          cy += 27;
+        });
+        if (b.total) {
+          if (filas.length) { x.fillStyle = "#e5e7eb"; x.fillRect(izq, cy + 3, IN, 2); cy += 10; }
+          txt(b.total.t.toUpperCase(), izq, cy + 27, F(800, 13), C.azul, { esp: 0.6 });
+          txt(b.total.v, der, cy + 31, F(800, 30), C.tinta, { der: true });
+          cy += 40;
+          if (b.total.nota) { txt(b.total.nota, der, cy + 10, F(600, 13), C.suave, { der: true }); cy += 18; }
+        }
+        if (pie.length) {
+          x.fillStyle = C.linea; x.fillRect(izq, cy + 5, IN, 1); cy += 12;
+          pie.forEach((f) => { txt(f.t, izq, cy + 18, F(600, 15), C.texto); txt(f.v, der, cy + 18, F(800, 16), C.tinta, { der: true }); cy += 27; });
+        }
+        if (cuotas.length) {
+          cy += 6;
+          cuotas.forEach((c, i) => {
+            const cx = izq + (i % 3) * (cw + gap), yy = cy + Math.floor(i / 3) * (ch + gap);
+            caja(cx, yy, cw, ch, 10); x.fillStyle = "#fff"; x.fill(); x.strokeStyle = "#e2e8f0"; x.lineWidth = 1; x.stroke();
+            txt(c.t, cx + 10, yy + 21, F(700, 12.5), C.suave);
+            if (c.antes && enLinea) { const w = txt(c.antes, cx + 10, yy + 45, fA, C.tenue, { tachado: true }); txt(c.v, cx + 10 + w + 6, yy + 45, fV, C.tinta); }
+            else if (c.antes) { txt(c.antes, cx + 10, yy + 40, fA, C.tenue, { tachado: true }); txt(c.v, cx + 10, yy + 63, fV, C.tinta); }
+            else txt(c.v, cx + 10, yy + 45, fV, C.tinta);
+          });
+        }
+      });
+    });
+    // puntos de la autocompra y la meta del Empiece Ya
+    if (m.puntos) {
+      const P = 14, IN = AN - 2 * P, fT = F(800, 14.5), fL = F(500, 14), fP = F(800, 14);
+      const lt = partir(m.puntos.t, fT, IN), ll = m.puntos.linea ? partir(m.puntos.linea, fL, IN) : [], lp = m.puntos.premio ? partir(m.puntos.premio, fP, IN - 24) : [];
+      const hP = lp.length ? 20 + lp.length * 19 : 0;
+      const alto = P + lt.length * 20 + (ll.length ? 4 + ll.length * 19 : 0) + (hP ? 8 + hP : 0) + P - 4;
+      pon(alto + 12, (y) => {
+        caja(M, y, AN, alto, 14); x.fillStyle = "#fff7ed"; x.fill(); x.strokeStyle = "#fed7aa"; x.lineWidth = 1; x.stroke();
+        let cy = y + P;
+        lt.forEach((l) => { txt(l, M + P, cy + 15, fT, "#7c2d12"); cy += 20; });
+        if (ll.length) { cy += 4; ll.forEach((l) => { txt(l, M + P, cy + 14, fL, "#7c2d12"); cy += 19; }); }
+        if (hP) {
+          cy += 8;
+          caja(M + P, cy, IN, hP, 9); x.fillStyle = "#ecfdf5"; x.fill(); x.strokeStyle = "#a7f3d0"; x.lineWidth = 1; x.stroke();
+          let py = cy + 10;
+          lp.forEach((l) => { txt(l, M + P + 12, py + 14, fP, "#065f46"); py += 19; });
+        }
+      });
+    }
+    pon(10, () => {});
+    const altoTotal = pasos.reduce((n, q) => n + q.alto, 0);
+    lienzo.width = Math.round(W * S); lienzo.height = Math.round(altoTotal * S);
+    x.setTransform(S, 0, 0, S, 0, 0);
+    x.fillStyle = "#fff"; x.fillRect(0, 0, W, altoTotal);
+    let y = 0;
+    pasos.forEach((q) => { q.pinta(y); y += q.alto; });
+    return lienzo;
+  };
   var ProductModal = ({ product, bonoInfo, cartQty, imageOverrides, videoLinks, metas, reglasLista, textoVideo, notaGrupo, onAdd, onSub, onRemove, onViewCart, onClose }) => {
     const [modo, setModo] = useState("cliente");
     const [playing, setPlaying] = useState(false);
     const [payState, setPayState] = useState(null);
     const [capturing, setCapturing] = useState(false);
     const [capErr, setCapErr] = useState("");
-    const [qcImg, setQcImg] = useState("");
-    const cardRef = useRef(null);
+    const [capMsg, setCapMsg] = useState("");
+    const [pendiente, setPendiente] = useState(null);   // imagen ya armada que el celular no dejó compartir sola: sale con otro toque
+    const [fotoLista, setFotoLista] = useState(0);
     const bakedImgRef = useRef(null);
+    const fotoEspera = useRef(null);
+    const cotRef = useRef({ clave: "", file: null });
     useEffect(() => {
-      if (!capErr) return;
-      const t = setTimeout(() => setCapErr(""), 4e3);
+      if (!capErr && !capMsg) return;
+      const t = setTimeout(() => { setCapErr(""); setCapMsg(""); }, 6e3);
       return () => clearTimeout(t);
-    }, [capErr]);
+    }, [capErr, capMsg]);
+    // La foto para la cotización se pide aparte, con permiso para copiarla al lienzo (sin eso la imagen no se puede exportar)
     useEffect(() => {
       if (!product) return;
-      setQcImg("");
       bakedImgRef.current = null;
+      fotoEspera.current = null;
       const url = imgSrc(product, imageOverrides);
       if (!url) return;
       let cancelled = false;
       const im = new Image();
       im.crossOrigin = "anonymous";
-      im.onload = () => {
-        if (cancelled) return;
-        bakedImgRef.current = im;
-        try {
-          const max = 640;
-          let w = im.naturalWidth || 600, h = im.naturalHeight || 600;
-          if (w > max) {
-            h = Math.round(h * max / w);
-            w = max;
-          }
-          const c = document.createElement("canvas");
-          c.width = w;
-          c.height = h;
-          const ctx = c.getContext("2d");
-          ctx.fillStyle = "#ffffff";
-          ctx.fillRect(0, 0, w, h);
-          ctx.drawImage(im, 0, 0, w, h);
-          setQcImg(c.toDataURL("image/jpeg", 0.9));
-        } catch (e) {
-          setQcImg("");
-        }
-      };
-      im.onerror = () => {
-        if (!cancelled) setQcImg("");
-      };
+      fotoEspera.current = new Promise((res) => {
+        im.onload = () => { if (!cancelled) { bakedImgRef.current = im; setFotoLista((n) => n + 1); } res(); };
+        im.onerror = () => res();
+      });
       im.src = url;
-      return () => {
-        cancelled = true;
-      };
+      return () => { cancelled = true; };
     }, [product, imageOverrides]);
     if (!product) return null;
     const esCat = !!product.esCat;     // repuesto o servicio: ficha corta, sin cuotas ni puntos
@@ -1263,105 +1546,125 @@
     const ps = payState || {};
     const psAuto = payState ? ps.auto : auto;
     const fechaHoy = (new Date()).toLocaleDateString("es-PE", { day: "2-digit", month: "long", year: "numeric" });
-    const cardImg = qcImg || src;
-    const makeCardCanvas = async () => {
-      const node = cardRef.current;
-      const canvas = await htmlToImage.toCanvas(node, { pixelRatio: 1.7, backgroundColor: "#ffffff", cacheBust: false });
-      try {
-        const img = bakedImgRef.current;
-        const photoEl = node.querySelector(".qc-photo");
-        if (img && img.complete && img.naturalWidth && photoEl) {
-          const nr = node.getBoundingClientRect(), pr = photoEl.getBoundingClientRect();
-          const sx = canvas.width / nr.width, sy = canvas.height / nr.height;
-          const x = (pr.left - nr.left) * sx, y = (pr.top - nr.top) * sy, w = pr.width * sx, h = pr.height * sy;
-          const ctx = canvas.getContext("2d");
-          ctx.fillStyle = "#ffffff";
-          ctx.fillRect(x, y, w, h);
-          const ir = img.naturalWidth / img.naturalHeight, br = w / h;
-          let dw = w, dh = h, dx = x, dy = y;
-          if (ir > br) {
-            dh = w / ir;
-            dy = y + (h - dh) / 2;
-          } else {
-            dw = h * ir;
-            dx = x + (w - dw) / 2;
-          }
-          ctx.drawImage(img, dx, dy, dw, dh);
-        }
-      } catch (e) {
+    // Lo que dice la cotización (solo datos): contado siempre y, si el producto tiene crédito, todas las cuotas con la inicial puesta
+    const armarCotizacion = () => {
+      const fm = formatMoney;
+      const m = { fecha: fechaHoy, nombre: esCat ? product.titulo || product.name : product.name, chip: psAuto ? (esCat ? "Precio Asesor" : "Precio Autocompra") : "Precio Cliente", auto: !!psAuto, bloques: [], puntos: null,
+        codigo: esCat ? (product.esServicio ? [product.catRaw, product.unidad].filter(Boolean).join(" \xB7 ") : "Cod. " + product.codigo) : "Cod. " + product.codigo + " - N\xB0 " + product.orden };
+      if (esCat) {
+        m.bloques.push(psAuto
+          ? { tipo: "contado", titulo: "", filas: [{ t: "Precio al cliente", v: fm(product.cashPrice) }, { t: "Tu ganancia", v: fm(descuento), estilo: "verde" }], total: { t: "Precio asesor", v: fm(autoPrice) }, pie: [] }
+          : { tipo: "contado", titulo: "", filas: [], total: { t: "Precio al cliente", v: fm(product.cashPrice), nota: product.unidad || "" }, pie: [] });
+        return m;
       }
-      return canvas;
+      const base = psAuto ? autoPrice : product.cashPrice;
+      const filas = [];
+      if (hasPromo) filas.push({ t: "Precio regular", v: fm(product.regularPrice), estilo: "tachado" });
+      if (psAuto) { filas.push({ t: "Precio contado", v: fm(product.cashPrice) }); filas.push({ t: "Menos tu descuento", v: "- " + fm(descuento), estilo: "verde" }); }
+      else if (hasPromo) filas.push({ t: "Descuento", v: "- " + fm(product.regularPrice - product.cashPrice), estilo: "verde" });
+      const pie = [];
+      if (ps.inicialContado != null && ps.inicialContado < base) {
+        pie.push({ t: psAuto ? "Tu inicial" : "Inicial", v: fm(ps.inicialContado) });
+        pie.push({ t: psAuto ? "Tu saldo contra entrega" : "Saldo contra entrega", v: fm(ps.saldoContado) });
+      }
+      m.bloques.push({ tipo: "contado", titulo: "Al contado", filas, total: { t: psAuto ? "Tu precio (contado)" : "Precio contado", v: fm(base) }, pie });
+      const ops = ps.eligible ? ps.opciones || [] : [];
+      if (ops.length) {
+        const meses = ops.map((o) => o.meses), mn = Math.min.apply(null, meses), mx = Math.max.apply(null, meses);
+        m.bloques.push({ tipo: "credito", titulo: "Al cr\xE9dito", nota: mn === mx ? mn + " meses" : "De " + mn + " a " + mx + " meses",
+          filas: [{ t: psAuto ? "Tu inicial" : "Inicial", v: fm(ps.inicialCredito) }],
+          cuotas: ops.map((o) => ({ t: o.meses + " cuotas de", v: fm(o.cuota), antes: psAuto && o.cuotaCliente ? fm(o.cuotaCliente) : "" })) });
+      }
+      if (psAuto) m.puntos = {
+        t: bonoVigente2 ? "Si compras hoy, tu puntaje sube " + bonoInfo.porcentaje + "% y ser\xEDa " + pts.toLocaleString("es-PE") + " pts." : "Esta autocompra te da " + pts.toLocaleString("es-PE") + " pts.",
+        linea: muestraPremio ? "Si te encuentras en tus primeras 4 semanas, " + (!metaInfo.alcanzado ? "te faltan solo " + metaInfo.faltante + " pts y solo " + metaInfo.meta.afiliados + " afiliados para ganar:" : "con solo " + metaInfo.meta.afiliados + " afiliados ganas:") : "",
+        premio: muestraPremio ? metaInfo.meta.premio : "" };
+      return m;
     };
-    const makeQuotePng = () => Promise.race([
-      makeCardCanvas().then((c) => c.toDataURL("image/png")),
-      new Promise((_, rej) => setTimeout(() => rej(new Error("La imagen tard\xF3 demasiado en generarse. Int\xE9ntalo de nuevo.")), 18e3))
-    ]);
-    const makeQuoteBlob = () => Promise.race([
-      makeCardCanvas().then((c) => new Promise((res) => c.toBlob(res, "image/png"))),
-      new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 18e3))
-    ]);
-    const quoteFileName = () => {
-      const mode = psAuto ? "autocompra" : "cliente";
-      let cond = "contado";
-      if (ps.tab === "credito" && ps.selectedTerm) cond = "credito-" + ps.selectedTerm + "m-ini" + Math.round(ps.inicialCredito || 0);
-      else if (ps.inicialContado != null && ps.inicialContado < product.cashPrice) cond = "contado-ini" + Math.round(ps.inicialContado);
-      return "cotizacion-" + product.codigo + "-" + mode + "-" + cond + ".png";
+    const claveCot = JSON.stringify(armarCotizacion()) + "|" + fotoLista;
+    const quoteFileName = () => "cotizacion-" + product.codigo + "-" + (psAuto ? (esCat ? "asesor" : "autocompra") : "cliente") + (ps.inicialContado != null ? "-ini" + Math.round(ps.inicialContado) : "") + ".png";
+    const armarArchivo = async (esperarFoto) => {
+      await fuentesCotizacion();
+      if (esperarFoto && !bakedImgRef.current && fotoEspera.current) await Promise.race([fotoEspera.current, new Promise((r) => setTimeout(r, 2200))]);
+      const m = armarCotizacion(), foto = bakedImgRef.current;
+      let blob = null;
+      try { blob = await lienzoABlob(dibujarCotizacion(m, foto)); } catch (e) { blob = null; }
+      if (!blob && foto) blob = await lienzoABlob(dibujarCotizacion(m, null));   // la foto no dejó exportar el lienzo: la cotización sale sin foto
+      if (!blob) throw new Error("sin imagen");
+      try { window.__cotizacion = m; } catch (e) {}
+      return new File([blob], quoteFileName(), { type: "image/png" });
     };
-    const triggerDownload = (dataUrl) => {
-      const a = document.createElement("a");
-      a.href = dataUrl;
-      a.download = quoteFileName();
-      a.style.display = "none";
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(() => a.remove(), 1500);
+    // La imagen se arma sola apenas cambia algo: al tocar Compartir ya está lista y el celular abre sus opciones sin esperar
+    // (si la página se demora después del toque, el celular se niega a compartir)
+    useEffect(() => {
+      setPendiente(null);
+      let vivo = true;
+      const t = setTimeout(() => { armarArchivo(false).then((f) => { if (vivo) cotRef.current = { clave: claveCot, file: f }; }).catch(() => {}); }, 400);
+      return () => { vivo = false; clearTimeout(t); };
+    }, [claveCot]);
+    const descargar = (file) => {
+      const url = URL.createObjectURL(file), a = document.createElement("a");
+      a.href = url; a.download = file.name; a.style.display = "none";
+      document.body.appendChild(a); a.click();
+      setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 4e3);
     };
+    const anotarCot = (via, resultado, extra) => rastrear("cotizacion", Object.assign({ via, resultado, lista: product.lista, codigo: product.codigo, nombre: product.name, modo: psAuto ? "autocompra" : "cliente" }, extra || {}));
+    const fallo = (e) => String(e && (e.name ? e.name + ": " : "") + (e.message || e) || "").slice(0, 160);
     const shareQuote = async () => {
-      if (!cardRef.current || capturing) return;
-      if (typeof htmlToImage === "undefined") {
-        setCapErr("No se pudo cargar el generador de imagen. Revisa tu conexi\xF3n.");
-        return;
-      }
+      if (capturing) return;
+      setCapErr(""); setCapMsg("");
+      const t0 = Date.now();
+      let file = pendiente || (cotRef.current.clave === claveCot ? cotRef.current.file : null), paso = "imagen";
       setCapturing(true);
       try {
-        await new Promise((r) => setTimeout(r, 60));
-        let file = null;
-        try {
-          const blob = await makeQuoteBlob();
-          if (blob) file = new File([blob], quoteFileName(), { type: "image/png" });
-        } catch (e2) {
-        }
-        if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
-          await navigator.share(paraCompartir(file, "Cotizacion", "Cotizacion - " + product.name));
+        if (!file) file = await armarArchivo(true);
+        paso = "compartir";
+        if (!(navigator.canShare && navigator.canShare({ files: [file] }))) {
+          descargar(file);
+          setCapMsg("Tu navegador no deja compartir: la imagen se guard\xF3 en tu equipo.");
+          anotarCot("compartir", "descarga");
         } else {
-          triggerDownload(await makeQuotePng());
+          let r = "ok";
+          try { await navigator.share(paraCompartir(file, "Cotizacion", "Cotizacion - " + product.name)); }
+          catch (e) { if (e && e.name === "AbortError") r = "cancelado"; else if (e && e.name === "NotAllowedError") r = "otro_toque"; else throw e; }
+          if (r === "otro_toque") { setPendiente(file); setCapMsg("La imagen ya est\xE1 lista. Toca otra vez para enviarla."); }
+          else setPendiente(null);
+          anotarCot("compartir", r, { ms: Date.now() - t0 });
         }
       } catch (e) {
-        if (!(e && e.name === "AbortError")) setCapErr("No se pudo generar la imagen. Int\xE9ntalo de nuevo.");
+        setCapErr(paso === "imagen" ? "No se pudo armar la imagen. Int\xE9ntalo de nuevo." : "Tu celular no dej\xF3 compartir la imagen. Prueba con Copiar.");
+        anotarCot("compartir", "error", { paso, error: fallo(e) });
       }
       setCapturing(false);
     };
-    const downloadQuote = async () => {
-      if (!cardRef.current || capturing) return;
-      if (typeof htmlToImage === "undefined") {
-        setCapErr("No se pudo cargar el generador de imagen. Revisa tu conexi\xF3n.");
-        return;
-      }
+    // Copiar pone UNA imagen en el portapapeles (el «Copiar» de las opciones del iPhone pega dos)
+    const copyQuote = async () => {
+      if (capturing) return;
+      setCapErr(""); setCapMsg("");
+      const listo = cotRef.current.clave === claveCot ? cotRef.current.file : null;
       setCapturing(true);
       try {
-        await new Promise((r) => setTimeout(r, 60));
-        triggerDownload(await makeQuotePng());
+        if (!(navigator.clipboard && navigator.clipboard.write && typeof ClipboardItem !== "undefined")) throw new Error("sin portapapeles");
+        await navigator.clipboard.write([new ClipboardItem({ "image/png": listo || armarArchivo(true) })]);   // sin esperar antes: Safari exige que salga en el mismo toque
+        setCapMsg("Imagen copiada. Ahora p\xE9gala en tu chat.");
+        anotarCot("copiar", "ok");
       } catch (e) {
-        setCapErr("No se pudo generar la imagen. Int\xE9ntalo de nuevo.");
+        try {
+          descargar(listo || await armarArchivo(true));
+          setCapMsg("No se pudo copiar: la imagen se guard\xF3 en tu equipo.");
+          anotarCot("copiar", "descarga", { error: fallo(e) });
+        } catch (e2) {
+          setCapErr("No se pudo copiar la imagen. Int\xE9ntalo de nuevo.");
+          anotarCot("copiar", "error", { error: fallo(e2) });
+        }
       }
       setCapturing(false);
     };
-    return h("div", { className: "modal-overlay", onClick: onClose }, h("div", { className: `modal-box ${auto ? "mode-auto" : ""}`, onClick: (e) => e.stopPropagation() }, !playing && h("button", { className: "modal-close", onClick: onClose }, h(XSvg, { s: 18 })), h("div", { className: "modal-scroll" }, h("div", { className: `modal-img ${playing && embed ? "playing" : ""} ${esCat ? "baja" : ""}` }, playing && embed ? h("div", { className: "modal-video" }, embed.type === "youtube" ? h(YouTubePlayer, { id: embed.id, onBack: () => setPlaying(false) }) : embed.type === "video" ? h(FileVideoPlayer, { src: embed.src, name: product.name, shareText: textoVideo, onBack: () => setPlaying(false) }) : h(React.Fragment, null, h("button", { className: "video-back", onClick: () => setPlaying(false) }, h(XSvg, { s: 13 }), " Imagen"), h("iframe", { src: embed.src, title: "Video del producto", allow: "autoplay; encrypted-media; fullscreen", allowFullScreen: true }))) : h(React.Fragment, null, h(LazyImage, { key: src, src, alt: product.name, codigo: product.codigo, onFoto: setConFoto }), !conFoto && !esCat && h("span", { className: "ptag", style: { background: "var(--blue)" } }, "N\xB0 ", product.orden), embed && h("div", { className: "play-overlay", onClick: () => setPlaying(true) }, h("div", { className: "play-btn" }, h("div", { className: "play-circle" }, h(PlaySvg, { s: 26 })), h("span", { className: "play-label" }, "Ver video"))), embed && h(BotonVideoWa, { src: embed.type === "video" ? embed.src : videoUrl, name: product.name, shareText: textoVideo, pill: true }))), h("div", { className: "modal-info" }, esCat && h("div", { className: "pcard-eti" }, product.catRaw, product.sub && !product.detalleCorto ? " \xB7 " + product.sub : ""), h("h3", { className: "pcard-name" }, esCat ? product.titulo || product.name : product.name), esCat && product.detalleCorto && h("p", { className: "pcard-det" }, product.detalleCorto), esCat && product.detalle && product.detalle !== product.detalleCorto && h("p", { className: "pcard-det" }, product.detalle), !product.esServicio && h("div", { className: "pcard-code" }, "C\xF3d. ", product.codigo), product.gift && h("div", { className: "gift-row" }, h(GiftSvg, null), h("span", null, "De Regalo: ", product.gift)), permiteAuto && h("div", { className: "mode-tabs" }, h("button", { className: `mode-tab ${!auto ? "on" : ""}`, onClick: () => setModo("cliente") }, "Precio Cliente"), h("button", { className: `mode-tab ${auto ? "on auto" : ""}`, onClick: () => setModo("auto") }, esCat ? "Precio Asesor" : "Precio Autocompra")), esCat ? h("div", { className: "pcard-content fade-in", key: auto ? "asesor" : "cliente" }, h(PrecioCatalogo, { product, auto, autoPrice, descuento, nota: notaGrupo, aviso: reglasLista && reglasLista.aviso })) : !auto ? h("div", { className: "pcard-content fade-in" }, h(PaymentBlock, { base: product.cashPrice, auto: false, summaryMode: "cliente", soloContado: !permiteCredito, pagoTotal: !permiteCredito, priceData: { regularPrice: product.regularPrice, cashPrice: product.cashPrice, hasPromo }, onState: setPayState }), h("div", { className: "points-note" }, h(SparkSvg, null), h("span", null, bonoVigente2 ? h(React.Fragment, null, "Esta venta da ", h("strong", null, product.points.toLocaleString("es-PE"), " pts"), ". Con el +", bonoInfo.porcentaje, "% vigente llega a ", h("strong", { className: "pts-alto" }, pts.toLocaleString("es-PE"), " pts"), ".") : h(React.Fragment, null, "Esta venta da ", h("strong", null, pts.toLocaleString("es-PE"), " pts"), "."))), muestraPremio && h(GananciaVenta, { vc: product.valorComisionable, puntos: pts })) : h("div", { className: "pcard-content fade-in" }, h(PaymentBlock, { base: autoPrice, auto: true, baseCliente: product.cashPrice, comparativo: true, summaryMode: "auto", priceData: { regularPrice: product.regularPrice, cashPrice: product.cashPrice, autoPrice, descuento, hasPromo }, onState: setPayState }), h("div", { className: "incentives" }, h("div", { className: "inc-header" }, h(SparkSvg, null), h("span", null, bonoVigente2 ? h(React.Fragment, null, "Esta autocompra da ", h("strong", null, product.points.toLocaleString("es-PE"), " pts"), ". Con el +", bonoInfo.porcentaje, "% vigente llega a ", h("strong", { className: "pts-alto" }, pts.toLocaleString("es-PE"), " pts"), ".") : h(React.Fragment, null, "Esta autocompra te da ", h("strong", null, pts.toLocaleString("es-PE"), " pts"), "."))), muestraPremio && (!metaInfo.alcanzado ? h("div", { className: "inc-level pending" }, h("p", null, "Si te encuentras en tus primeras 4 semanas, te faltan ", h("strong", null, "solo ", metaInfo.faltante, " pts"), " y ", h("strong", null, "solo ", metaInfo.meta.afiliados, " afiliados"), " para ganar:"), h("div", { className: "prize-row" }, h(TrophySvg, null), h("span", null, metaInfo.meta.premio))) : h("div", { className: "inc-level achieved" }, h("p", null, metaInfo.esTope ? "\xA1Felicidades!" : "\xA1Excelente!", " Si te encuentras en tus primeras 4 semanas, con ", h("strong", null, "solo ", metaInfo.meta.afiliados, " afiliados"), " ganas:"), h("div", { className: "prize-row ok" }, h(TrophySvg, null), h("span", null, metaInfo.meta.premio))))), muestraPremio && h(GananciaEquipo, { vc: product.valorComisionable, puntos: pts })))), h("div", { className: "modal-foot" }, capErr && h("div", { className: "cap-err" }, capErr), h("div", { className: "quote-actions" }, h("button", { className: "share-quote-btn", onClick: shareQuote, disabled: capturing }, h(ShareSvg, { s: 17 }), " ", capturing ? "Generando\u2026" : "Compartir cotizaci\xF3n"))), h("div", { className: "qc-holder" }, h("div", { className: "qc-card", ref: cardRef }, h("div", { className: "qc-head" }, h("span", { className: "qc-brand" }, "RENA WARE"), h("span", { className: "qc-date" }, fechaHoy)), h("div", { className: "qc-photo" }, h("img", { className: "qc-img", src: cardImg, alt: "" })), h("div", { className: "qc-info" }, h("div", { className: "qc-name" }, product.name), h("div", { className: "qc-code" }, esCat ? (product.esServicio ? [product.catRaw, product.unidad].filter(Boolean).join(" \xB7 ") : "Cod. " + product.codigo) : h(React.Fragment, null, "Cod. ", product.codigo, " - N\xB0 ", product.orden)), h("span", { className: `qc-mode ${psAuto ? "auto" : ""}` }, psAuto ? (esCat ? "Precio Asesor" : "Precio Autocompra") : "Precio Cliente"), ps.tab === "credito" && ps.creditTotal != null ? h(React.Fragment, null, h("div", { className: "qc-credit-big" }, h("div", { className: "qc-cb" }, h("span", { className: "qc-cb-l" }, "Inicial"), h("span", { className: "qc-cb-v" }, formatMoney(ps.inicialCredito)))), h("div", { className: "qc-opts-t" }, "Elige tu plan de cuotas"), h("div", { className: "qc-opts" }, (ps.opciones || []).map((o) => h("div", { key: o.meses, className: "qc-opt" }, h("span", { className: "qc-opt-m" }, o.meses, " cuotas de"), h("span", { className: "qc-opt-v" }, psAuto && o.cuotaCliente ? h(React.Fragment, null, h("span", { className: "qc-strike2" }, formatMoney(o.cuotaCliente)), formatMoney(o.cuota)) : formatMoney(o.cuota)))))) : psAuto ? h("div", { className: "qc-small" }, hasPromo && h("div", { className: "qc-srow" }, h("span", null, "Precio regular"), h("span", { className: "strike" }, formatMoney(product.regularPrice))), h("div", { className: "qc-srow" }, h("span", null, esCat ? "Precio al cliente" : "Precio contado"), h("span", null, formatMoney(product.cashPrice))), h("div", { className: "qc-srow" }, h("span", null, esCat ? "Tu ganancia" : "Menos tu descuento"), h("span", { className: "g" }, esCat ? "" : "- ", formatMoney(descuento))), h("div", { className: "qc-bigtotal" }, h("span", null, esCat ? "Precio asesor" : "Tu precio (contado)"), h("strong", null, formatMoney(autoPrice)))) : h("div", { className: "qc-small" }, hasPromo && h("div", { className: "qc-srow" }, h("span", null, "Precio regular"), h("span", { className: "strike" }, formatMoney(product.regularPrice))), h("div", { className: "qc-bigtotal" }, h("span", null, "Precio contado"), h("strong", null, formatMoney(product.cashPrice))), ps.inicialContado != null && ps.inicialContado < product.cashPrice && h("div", { className: "qc-srow" }, h("span", null, "Inicial ", formatMoney(ps.inicialContado), " | Saldo ", formatMoney(ps.saldoContado)), h("span", null))), psAuto && !esCat && h("div", { className: "qc-pts" }, h("div", { className: "qc-pts-t" }, bonoVigente2 ? "Si compras hoy, tu puntaje sube " + bonoInfo.porcentaje + "% y seria " + pts + " pts." : "Esta autocompra te da " + pts + " pts."), muestraPremio && h("div", { className: "qc-prize-line" }, "Si te encuentras en tus primeras 4 semanas, " + (!metaInfo.alcanzado ? "te faltan solo " + metaInfo.faltante + " pts y solo " + metaInfo.meta.afiliados + " afiliados para ganar:" : "con solo " + metaInfo.meta.afiliados + " afiliados ganas:")), muestraPremio && h("div", { className: "qc-prize-row" }, h(TrophySvg, { s: 16 }), h("span", { className: "qc-prize-name" }, metaInfo.meta.premio))))))));
+    return h("div", { className: "modal-overlay", onClick: onClose }, h("div", { className: `modal-box ${auto ? "mode-auto" : ""}`, onClick: (e) => e.stopPropagation() }, !playing && h("button", { className: "modal-close", onClick: onClose }, h(XSvg, { s: 18 })), h("div", { className: "modal-scroll" }, h("div", { className: `modal-img ${playing && embed ? "playing" : ""} ${esCat ? "baja" : ""}` }, playing && embed ? h("div", { className: "modal-video" }, embed.type === "youtube" ? h(YouTubePlayer, { id: embed.id, onBack: () => setPlaying(false) }) : embed.type === "video" ? h(FileVideoPlayer, { src: embed.src, name: product.name, shareText: textoVideo, codigo: product.codigo, onBack: () => setPlaying(false) }) : h(React.Fragment, null, h("button", { className: "video-back", onClick: () => setPlaying(false) }, h(XSvg, { s: 13 }), " Imagen"), h("iframe", { src: embed.src, title: "Video del producto", allow: "autoplay; encrypted-media; fullscreen", allowFullScreen: true }))) : h(React.Fragment, null, h(LazyImage, { key: src, src, alt: product.name, codigo: product.codigo, onFoto: setConFoto }), !conFoto && !esCat && h("span", { className: "ptag", style: { background: "var(--blue)" } }, "N\xB0 ", product.orden), embed && h("div", { className: "play-overlay", onClick: () => { rastrear("ver_video", { lista: product.lista, codigo: product.codigo, nombre: product.name }); setPlaying(true); } }, h("div", { className: "play-btn" }, h("div", { className: "play-circle" }, h(PlaySvg, { s: 26 })), h("span", { className: "play-label" }, "Ver video"))), embed && h(BotonVideoWa, { src: embed.type === "video" ? embed.src : videoUrl, name: product.name, shareText: textoVideo, pill: true, esArchivo: embed.type === "video", codigo: product.codigo, precarga: true }))), h("div", { className: "modal-info" }, esCat && h("div", { className: "pcard-eti" }, product.catRaw, product.sub && !product.detalleCorto ? " \xB7 " + product.sub : ""), h("h3", { className: "pcard-name" }, esCat ? product.titulo || product.name : product.name), esCat && product.detalleCorto && h("p", { className: "pcard-det" }, product.detalleCorto), esCat && product.detalle && product.detalle !== product.detalleCorto && h("p", { className: "pcard-det" }, product.detalle), !product.esServicio && h("div", { className: "pcard-code" }, "C\xF3d. ", product.codigo), product.gift && h("div", { className: "gift-row" }, h(GiftSvg, null), h("span", null, "De Regalo: ", product.gift)), permiteAuto && h("div", { className: "mode-tabs" }, h("button", { className: `mode-tab ${!auto ? "on" : ""}`, onClick: () => setModo("cliente") }, "Precio Cliente"), h("button", { className: `mode-tab ${auto ? "on auto" : ""}`, onClick: () => setModo("auto") }, esCat ? "Precio Asesor" : "Precio Autocompra")), esCat ? h("div", { className: "pcard-content fade-in", key: auto ? "asesor" : "cliente" }, h(PrecioCatalogo, { product, auto, autoPrice, descuento, nota: notaGrupo, aviso: reglasLista && reglasLista.aviso })) : !auto ? h("div", { className: "pcard-content fade-in" }, h(PaymentBlock, { base: product.cashPrice, auto: false, summaryMode: "cliente", soloContado: !permiteCredito, pagoTotal: !permiteCredito, priceData: { regularPrice: product.regularPrice, cashPrice: product.cashPrice, hasPromo }, onState: setPayState }), h("div", { className: "points-note" }, h(SparkSvg, null), h("span", null, bonoVigente2 ? h(React.Fragment, null, "Esta venta da ", h("strong", null, product.points.toLocaleString("es-PE"), " pts"), ". Con el +", bonoInfo.porcentaje, "% vigente llega a ", h("strong", { className: "pts-alto" }, pts.toLocaleString("es-PE"), " pts"), ".") : h(React.Fragment, null, "Esta venta da ", h("strong", null, pts.toLocaleString("es-PE"), " pts"), "."))), muestraPremio && h(GananciaVenta, { vc: product.valorComisionable, puntos: pts })) : h("div", { className: "pcard-content fade-in" }, h(PaymentBlock, { base: autoPrice, auto: true, baseCliente: product.cashPrice, comparativo: true, summaryMode: "auto", priceData: { regularPrice: product.regularPrice, cashPrice: product.cashPrice, autoPrice, descuento, hasPromo }, onState: setPayState }), h("div", { className: "incentives" }, h("div", { className: "inc-header" }, h(SparkSvg, null), h("span", null, bonoVigente2 ? h(React.Fragment, null, "Esta autocompra da ", h("strong", null, product.points.toLocaleString("es-PE"), " pts"), ". Con el +", bonoInfo.porcentaje, "% vigente llega a ", h("strong", { className: "pts-alto" }, pts.toLocaleString("es-PE"), " pts"), ".") : h(React.Fragment, null, "Esta autocompra te da ", h("strong", null, pts.toLocaleString("es-PE"), " pts"), "."))), muestraPremio && (!metaInfo.alcanzado ? h("div", { className: "inc-level pending" }, h("p", null, "Si te encuentras en tus primeras 4 semanas, te faltan ", h("strong", null, "solo ", metaInfo.faltante, " pts"), " y ", h("strong", null, "solo ", metaInfo.meta.afiliados, " afiliados"), " para ganar:"), h("div", { className: "prize-row" }, h(TrophySvg, null), h("span", null, metaInfo.meta.premio))) : h("div", { className: "inc-level achieved" }, h("p", null, metaInfo.esTope ? "\xA1Felicidades!" : "\xA1Excelente!", " Si te encuentras en tus primeras 4 semanas, con ", h("strong", null, "solo ", metaInfo.meta.afiliados, " afiliados"), " ganas:"), h("div", { className: "prize-row ok" }, h(TrophySvg, null), h("span", null, metaInfo.meta.premio))))), muestraPremio && h(GananciaEquipo, { vc: product.valorComisionable, puntos: pts })))), h("div", { className: "modal-foot" }, capErr && h("div", { className: "cap-err" }, capErr), capMsg && h("div", { className: "cap-ok" }, capMsg), h("div", { className: "quote-actions" }, h("button", { className: `share-quote-btn ${pendiente ? "lista" : ""}`, onClick: shareQuote, disabled: capturing }, h(ShareSvg, { s: 17 }), " ", capturing ? "Preparando\u2026" : pendiente ? "Imagen lista: toca para enviar" : "Compartir cotizaci\xF3n"), h("button", { className: "copy-quote-btn", onClick: copyQuote, disabled: capturing, title: "Copiar la imagen de la cotizaci\xF3n" }, h(CopySvg, { s: 17 }), "Copiar")))));
   };
-  // ---- Recorrido guiado: la primera vez que alguien entra en este equipo y cuando toca «Ver tutorial».
+  // ---- Recorrido guiado: se abre con «Ver tutorial» (ya no arranca solo la primera vez: Nelson, 20/11/2026).
   // Oscurece la pantalla, deja a la vista una parte, la explica y sigue con «Siguiente». Cada paso prepara antes
   // la pantalla (abre la ficha de un producto, toca Crédito, sube la inicial…) y, si esa parte no existe, se salta.
-  var TOUR_KEY = "rw_tour_v1";
   var AyudaSvg = ({ s = 15 }) => h("svg", { width: s, height: s, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2.2, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": "true" }, h("circle", { cx: 12, cy: 12, r: 10 }), h("path", { d: "M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3" }), h("path", { d: "M12 17h.01" }));
   var pausa = (ms) => new Promise((r) => setTimeout(r, ms));
   var seVe = (el) => { if (!el) return false; const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
@@ -1393,7 +1696,9 @@
   };
   // Sube lo resaltado al borde de arriba de lo visible (en la página, bajo lo que queda fijo) para que la tarjeta quepa
   // debajo; si en una pantalla chica así no cabe, lo deja abajo y la tarjeta va encima
+  var quitarRelleno = () => { try { document.querySelectorAll("[data-tour-relleno]").forEach((x) => x.remove()); } catch (e) {} };
   var encuadrar = (els, alto) => {
+    quitarRelleno();
     const u = unirCajas(els);
     if (!u || els.some((el) => el.closest(".menu-fijo, .sticky-nav, .nav-top, .modal-foot"))) return;
     const vh = window.innerHeight, pad = 7, m = 12;
@@ -1403,8 +1708,16 @@
     else { const sn = document.querySelector(".sticky-nav"); techo = (sn ? (parseFloat(getComputedStyle(sn).top) || 0) + sn.offsetHeight : 0) + m; piso = vh - m; }
     let destino = techo;
     if (techo + u.height + pad + 2 * m + (alto || 0) > vh) destino = Math.max(techo, piso - pad - u.height);
-    if (caja) caja.scrollTop += u.top - destino;
-    else window.scrollTo(0, Math.max(0, (window.scrollY || 0) + u.top - destino));
+    if (caja) {
+      const quiere = caja.scrollTop + u.top - destino, tope = caja.scrollHeight - caja.clientHeight;
+      if (quiere > tope + 1) {   // lo resaltado está al final de la ficha y no sube más: se le da aire debajo para que la tarjeta quepa
+        const r = document.createElement("div");
+        r.setAttribute("data-tour-relleno", ""); r.setAttribute("aria-hidden", "true");
+        r.style.height = Math.ceil(quiere - tope) + "px";
+        caja.appendChild(r);
+      }
+      caja.scrollTop = quiere;
+    } else window.scrollTo(0, Math.max(0, (window.scrollY || 0) + u.top - destino));
   };
   // Dónde va la tarjeta: debajo de lo resaltado, si no cabe encima; en escritorio, al costado si hay sitio
   var colocarTarjeta = (u, alto, ancho) => {
@@ -1419,7 +1732,8 @@
     const left = lim(u.left + u.width / 2 - ancho / 2, m, vw - ancho - m);
     if (vh - u.bottom >= alto + 2 * m) return { top: u.bottom + m, left };
     if (u.top >= alto + 2 * m) return { top: u.top - m - alto, left };
-    return { top: vh - alto - m, left };
+    const arriba = m, abajo = vh - alto - m;   // no cabe ni arriba ni abajo: va del lado donde tapa menos
+    return { top: arriba + alto - u.top <= u.bottom - abajo ? arriba : abajo, left };
   };
   var Tour = ({ pasos, desde, onFin }) => {
     const total = pasos.length;
@@ -1503,7 +1817,7 @@
           !ultimo && h("button", { type: "button", className: "tour-saltar", onClick: () => onFin("salto", i, total) }, i === 0 ? "Saltar tutorial" : "Saltar"),
           h("span", { className: "tour-esp" }),
           i > 0 && h("button", { type: "button", className: "tour-atras", disabled: !listo, onClick: () => ir(i - 1) }, "Atr\xE1s"),
-          h("button", { type: "button", className: "tour-sig", ref: sigRef, disabled: !listo, onClick: () => ir(i + 1) }, i === 0 ? "Empezar" : ultimo ? "Terminar" : "Siguiente"))));
+          h("button", { type: "button", className: "tour-sig", ref: sigRef, disabled: !listo, onClick: () => ir(i + 1) }, ultimo ? "Terminar" : "Siguiente"))));
   };
   var BonoSemanaAdmin = ({ bs, setConfig }) => {
     const set = (campo, val) => setConfig((c) => ({ ...c, bonoSemana: { ...leerBonoSemana(c), [campo]: val } }));
@@ -1623,12 +1937,36 @@
         h("input", { type: "password", value: clave1, onChange: (e) => setClave1(e.target.value), placeholder: "Clave nueva" }),
         h("button", { className: "asr-add", onClick: cambiarClave }, "Cambiar")));
   };
+  // Actividad: quién entra, desde qué equipo, cuánto rato y qué hace (fichas, cotizaciones, videos). Lo llena `registrar_evento`.
+  var EQUIPO_SO = { "iPhone OS": "iPhone", iOS: "iPhone", "Mac OS X": "Mac", macOS: "Mac" };
+  var describirEvento = (e) => {
+    const d = e.detalle || {}, r = d.resultado || "";
+    const cual = { ok: "enviada", cancelado: "cancelada", otro_toque: "pidi\xF3 otro toque", error: "fall\xF3", descarga: "descargada", enlace: "por enlace", enlace_sin_adjuntar: "por enlace (no adjunta)", cerro_antes: "no enviado (cerr\xF3 la ficha mientras se preparaba)" }[r] || r;
+    switch (e.tipo) {
+      case "sesion_inicio": return "ingres\xF3 con su DNI";
+      case "visita": return "entr\xF3";
+      case "sesion_fin": return "cerr\xF3 sesi\xF3n";
+      case "ver_lista": return "abri\xF3 la lista " + (d.lista || "");
+      case "ver_producto": return "abri\xF3 " + (d.nombre || d.codigo || "");
+      case "ver_video": return "vio el video de " + (d.nombre || d.codigo || "");
+      case "video": return "video " + (r === "ok" ? "enviado" : r === "cancelado" ? "cancelado" : cual) + ": " + (d.nombre || d.codigo || "") + (d.mb ? " (" + d.mb + " MB" + (d.ms ? ", " + Math.round(d.ms / 1000) + " s" : "") + ")" : "");
+      case "cotizacion": return "cotizaci\xF3n " + (d.via === "copiar" ? (r === "ok" ? "copiada" : cual) : cual) + ": " + (d.nombre || d.codigo || "") + (d.modo === "autocompra" ? " (autocompra)" : "");
+      case "buscar": return "busc\xF3 \xAB" + (d.texto || "") + "\xBB" + (d.resultados === 0 ? " (sin resultados)" : "");
+      case "tutorial": return "tutorial: " + (d.accion || "") + (d.paso ? " en el paso " + d.paso : "");
+      case "simulador": return "abri\xF3 el simulador de puntos";
+      case "comparador": return "abri\xF3 el buscador maestro";
+      case "error": return "error: " + (d.msg || "");
+      default: return String(e.tipo || "").replace(/_/g, " ");
+    }
+  };
+  var ROTULO_TIPO = { sesion_inicio: "Ingresos con DNI", visita: "Visitas", ver_lista: "Listas abiertas", ver_producto: "Fichas abiertas", ver_video: "Videos vistos", video: "Videos (intentos de env\xEDo)", cotizacion: "Cotizaciones (intentos)", buscar: "B\xFAsquedas", tutorial: "Tutorial", simulador: "Simulador", comparador: "Buscador maestro", sesion_fin: "Cierres de sesi\xF3n", error: "Errores" };
   var ActividadAdmin = () => {
     const [d, setD] = useState(null);
     const [dias, setDias] = useState(7);
     const [msg, setMsg] = useState("");
     useEffect(() => {
       if (!sb) return;
+      setD(null);
       (async () => {
         try {
           const { data, error } = await sb.rpc("admin_actividad", { p_token: adminTok(), p_dias: dias });
@@ -1638,30 +1976,50 @@
       })();
     }, [dias]);
     if (msg) return h("div", { className: "admin-body" }, h("div", { className: "info-banner red" }, h(AlertSvg, null), h("span", null, msg)));
-    if (!d) return h("div", { className: "admin-body" }, h("p", { className: "admin-note" }, "Cargando\u2026"));
-    const res = d.resumen || [];
+    if (!d) return h("div", { className: "admin-body" }, h("p", { className: "admin-note" }, "Cargando…"));
+    const res = d.resumen || [], t = d.totales || null;
+    const equipoDe = (a) => [a.dispositivo, EQUIPO_SO[a.so] || a.so, a.navegador].filter(Boolean).join(" \xB7 ");
+    const dato = (n, uno, varios) => h("span", { className: n ? "" : "cero" }, n || 0, " ", n === 1 ? uno : varios);
     return h("div", { className: "admin-body" },
       h("div", { className: "ev-tools" }, [1, 7, 30].map((n) => h("button", { key: n, className: `sim-chip ${dias === n ? "on" : ""}`, onClick: () => setDias(n) }, n === 1 ? "Hoy" : n + " d\xEDas"))),
+      t && h("div", { className: "act-totales" }, [["Personas", t.personas], ["Visitas", t.visitas], ["Minutos de uso", t.minutos], ["Fichas abiertas", t.fichas], ["Cotizaciones enviadas", t.cotizaciones], ["Videos enviados", t.videos]].map((x) => h("div", { key: x[0], className: "act-total" }, h("strong", null, x[1] || 0), h("span", null, x[0])))),
       h("div", { className: "sim-sect" }, "Por asesor"),
-      h("div", { className: "act-tabla" },
-        h("div", { className: "act-cab" }, h("span", null, "Asesor"), h("span", null, "Sesiones"), h("span", null, "Min."), h("span", null, "Acciones")),
-        res.map((a) => h("div", { key: a.celular, className: "act-fila" },
-          h("span", { className: "act-nom" }, h("strong", null, a.nombre || a.celular), h("small", null, a.celular, a.dispositivo ? " \xB7 " + a.dispositivo : "", a.so ? " " + a.so : "", h("br"), a.ultima ? fechaCorta(a.ultima) : "sin actividad")),
-          h("span", null, a.sesiones), h("span", null, a.minutos), h("span", null, a.acciones)))),
+      res.map((a) => h("div", { key: a.celular, className: "act-persona" },
+        h("strong", null, a.nombre || a.celular),
+        h("small", null, [equipoDe(a), a.ultima ? "\xFAltima vez: " + fechaCorta(a.ultima) : ""].filter(Boolean).join(" \xB7 ")),
+        h("div", { className: "act-datos" }, dato(a.visitas != null ? a.visitas : a.sesiones, "visita", "visitas"), dato(a.minutos, "min", "min"), dato(a.fichas != null ? a.fichas : a.acciones, a.fichas != null ? "ficha" : "acci\xF3n", a.fichas != null ? "fichas" : "acciones"), a.cotizaciones != null && dato(a.cotizaciones, "cotizaci\xF3n", "cotizaciones"), a.videos != null && dato(a.videos, "video", "videos")))),
       !res.length && h("div", { className: "sim-empty" }, "Sin actividad en el per\xEDodo."),
+      (d.por_dia || []).length > 1 && h(React.Fragment, null,
+        h("div", { className: "sim-sect" }, "Por d\xEDa"),
+        h("div", { className: "sim-card" }, d.por_dia.map((x) => h("div", { key: x.dia, className: "sim-line" },
+          h("span", { className: "sim-name" }, new Date(x.dia + "T12:00:00-05:00").toLocaleDateString("es-PE", { weekday: "short", day: "2-digit", month: "short", timeZone: "America/Lima" })),
+          h("span", { className: "act-dia" }, x.personas, x.personas === 1 ? " persona" : " personas", " \xB7 ", x.minutos, " min \xB7 ", x.fichas, " fichas \xB7 ", x.cotizaciones, " cotiz. \xB7 ", x.videos, " videos"))))),
+      (d.equipos || []).length > 0 && h(React.Fragment, null,
+        h("div", { className: "sim-sect" }, "Desde qu\xE9 equipo entran"),
+        h("div", { className: "sim-card" }, d.equipos.map((x, i) => h("div", { key: i, className: "sim-line" },
+          h("span", { className: "sim-name" }, EQUIPO_SO[x.so] || x.so), h("strong", null, x.n, x.n === 1 ? " persona" : " personas"))))),
       (d.top_productos || []).length > 0 && h(React.Fragment, null,
         h("div", { className: "sim-sect" }, "Productos m\xE1s abiertos"),
-        h("div", { className: "sim-card" }, d.top_productos.map((p, i) => h("div", { key: i, className: "sim-line" },
-          h("span", { className: "sim-name" }, p.producto), h("strong", null, p.n))))),
+        h("div", { className: "sim-card" }, d.top_productos.map((x, i) => h("div", { key: i, className: "sim-line" },
+          h("span", { className: "sim-name" }, x.producto), h("strong", null, x.n))))),
+      (d.busquedas || []).length > 0 && h(React.Fragment, null,
+        h("div", { className: "sim-sect" }, "Qu\xE9 buscan"),
+        h("div", { className: "sim-card" }, d.busquedas.map((x, i) => h("div", { key: i, className: "sim-line" },
+          h("span", { className: "sim-name" }, x.texto, x.sin ? h("small", null, h("br"), "sin resultados ", x.sin, x.sin === 1 ? " vez" : " veces") : null), h("strong", null, x.n))))),
       (d.por_tipo || []).length > 0 && h(React.Fragment, null,
         h("div", { className: "sim-sect" }, "Qu\xE9 usan"),
         h("div", { className: "sim-card" }, d.por_tipo.map((x, i) => h("div", { key: i, className: "sim-line" },
-          h("span", { className: "sim-name" }, x.tipo.replace(/_/g, " ")), h("strong", null, x.n))))),
+          h("span", { className: "sim-name" }, ROTULO_TIPO[x.tipo] || x.tipo.replace(/_/g, " ")), h("strong", null, x.n))))),
+      (d.fallas || []).length > 0 && h(React.Fragment, null,
+        h("div", { className: "sim-sect" }, "Fallas al compartir y errores"),
+        h("div", { className: "sim-card" }, d.fallas.map((e, i) => h("div", { key: i, className: "sim-line" },
+          h("span", { className: "sim-name" }, h("strong", null, e.nombre || e.celular), " ", describirEvento(e),
+            h("small", null, h("br"), [EQUIPO_SO[e.so] || e.so, e.navegador, e.detalle && e.detalle.paso, e.detalle && e.detalle.error].filter(Boolean).join(" \xB7 "))),
+          h("span", { className: "act-hora" }, fechaCorta(e.cuando)))))),
       h("div", { className: "sim-sect" }, "\xDAltimos movimientos"),
       h("div", { className: "sim-card" }, (d.ultimos || []).map((e, i) => h("div", { key: i, className: "sim-line" },
-        h("span", { className: "sim-name" }, h("strong", null, e.nombre || e.celular), " ", e.tipo.replace(/_/g, " "),
-          e.detalle && e.detalle.nombre ? h("small", null, h("br"), e.detalle.nombre) : null),
-        h("span", { className: "sim-contado", style: { textDecoration: "none" } }, fechaCorta(e.cuando))))));
+        h("span", { className: "sim-name" }, h("strong", null, e.nombre || e.celular), " ", describirEvento(e)),
+        h("span", { className: "act-hora" }, fechaCorta(e.cuando))))));
   };
   var AdminPanel = ({ open, config, setConfig, saveState, sbReady: sbReady2, productos, listas, onSaveNow, onClose }) => {
     const [isAdmin, setIsAdmin] = useState(false);
@@ -2028,6 +2386,7 @@
         const { data, error } = await sb.rpc("asesor_login", { p_celular: limpio, p_ctx: contexto() });
         if (error) throw error;
         guardarTok(SESION_KEY, data.token);
+        recordarSesion(data);
         onEntrar(data);
       } catch (e) {
         setErr(/habilitado/i.test(e.message || "") ? "Ese DNI no est\xE1 registrado en el equipo. Pide a tu l\xEDder que lo registre." : (e.message || "No se pudo ingresar"));
@@ -2061,7 +2420,7 @@
           --tinta:#0f172a;--text:#0f172a;--muted:#64748b;--bg:#f2f4f7;--card:#fff;--border:#e1e6ed;--suave:#f6f8fa;
           --blue:#2563eb;--blueD:#1d4ed8;--blueL:#eef4ff;--blueB:#c7d7fe;
           --indigo:#2563eb;--indigoL:#eef4ff;--indigoD:#1e3a8a; /* ya no hay índigo: es el mismo azul */
-          --amber:#b45309;--amberD:#92400e;--amberL:#fff7ed;--amberB:#fed7aa;--marca:#fbbf24;
+          --amber:#b45309;--amberD:#92400e;--amberL:#fff7ed;--amberB:#fed7aa;--marca:#fbbf24;--esp:#c2410c;--espT:#7c2d12;--espL:#ffedd5;--espM:#fed7aa;--espB:#fb923c;
           --green:#047857;--greenL:#ecfdf5;--greenB:#a7f3d0;
           --red:#dc2626;--redL:#fef2f2;
           --r:16px;--rs:10px;--shadow:0 1px 2px rgba(15,23,42,.04),0 8px 24px rgba(15,23,42,.06)}
@@ -2179,41 +2538,6 @@
         .share-quote-btn:hover{background:#1d4ed8} .share-quote-btn:disabled{opacity:.6;cursor:default}
         .dl-quote-btn{flex-shrink:0;display:flex;align-items:center;justify-content:center;width:48px;background:#f59e0b;color:#fff;border:none;border-radius:10px;cursor:pointer;font-family:inherit;box-shadow:0 2px 6px rgba(245,158,11,.35)} .dl-quote-btn:hover{background:#d97706} .dl-quote-btn:disabled{opacity:.6;cursor:default}
         .cap-err{background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;border-radius:8px;padding:7px 10px;font-size:13px;font-weight:600;text-align:center;margin-bottom:8px}
-        .qc-card{width:560px;background:#fff;color:#0f172a;font-family:'DM Sans',system-ui,sans-serif;overflow:hidden} .qc-holder{position:fixed;left:0;top:0;width:0;height:0;overflow:hidden;z-index:-1;pointer-events:none}
-        .qc-head{display:flex;align-items:center;justify-content:space-between;background:#0f172a;color:#fff;padding:14px 24px}
-        .qc-brand{font-size:20px;font-weight:800;letter-spacing:.12em}
-        .qc-date{font-size:13px;color:#cbd5e1;font-weight:600}
-        .qc-photo{width:100%;height:380px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;overflow:hidden}
-        .qc-img{width:100%;height:100%;object-fit:contain}
-        .qc-info{padding:18px 24px 22px}
-        .qc-name{font-size:20px;font-weight:800;line-height:1.2}
-        .qc-code{font-size:12.5px;color:#6b7280;font-weight:600;margin:4px 0 10px}
-        .qc-mode{display:inline-flex;align-items:center;white-space:nowrap;font-size:12.5px;font-weight:800;color:#1e40af;background:#eff6ff;border:1px solid #bfdbfe;padding:5px 14px;border-radius:100px;margin-bottom:14px}
-        .qc-mode.auto{color:#5b21b6;background:#f5f3ff;border-color:#ddd6fe}
-        .qc-credit-big{background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:12px 16px;margin-bottom:10px}
-        .qc-cb{display:flex;justify-content:space-between;align-items:baseline;padding:3px 0}
-        .qc-cb-l{font-size:15px;font-weight:700;color:#334155}
-        .qc-cb-v{font-size:25px;font-weight:800;color:#1e3a8a;line-height:1.1}
-        .qc-small{margin-top:2px}
-        .qc-srow{display:flex;justify-content:space-between;align-items:baseline;font-size:14.5px;font-weight:600;color:#475569;padding:4px 0}
-        .qc-srow .g{color:#059669;font-weight:700} .qc-srow .strike{text-decoration:line-through;color:#9ca3af}
-        .qc-bigtotal{display:flex;justify-content:space-between;align-items:baseline;margin-top:8px;padding-top:8px;border-top:2px solid #e5e7eb}
-        .qc-bigtotal span{font-size:13px;font-weight:800;color:#1e40af;text-transform:uppercase;letter-spacing:.04em}
-        .qc-bigtotal strong{font-size:26px;font-weight:800;line-height:1}
-        .qc-pts{margin-top:14px;background:linear-gradient(135deg,#fffbeb,#fef3c7);border:1px solid #fde68a;border-radius:10px;padding:11px 14px;color:#78350f;font-size:13.5px;line-height:1.45}
-        .qc-pts-t{font-weight:700;margin-bottom:5px}
-        .qc-prize-line{font-size:13.5px;margin-bottom:7px}
-        .qc-prize-row{display:flex;align-items:center;gap:7px;background:rgba(16,185,129,.12);border:1px solid #a7f3d0;border-radius:8px;padding:8px 11px}
-        .qc-prize-row svg{color:#059669;flex-shrink:0}
-        .qc-prize-name{font-size:13.5px;font-weight:800;color:#065f46;line-height:1.3}
-        .qc-strike2{font-size:16px;color:#9ca3af;text-decoration:line-through;font-weight:600;margin-right:7px}
-        .qc-srow.saving span{color:#059669;font-weight:800;font-size:15px}
-        .qc-srow.finalp{border-top:1px solid #e5e7eb;margin-top:3px;padding-top:7px} .qc-srow.finalp span{color:#0f172a;font-weight:800;font-size:15.5px}
-        .qc-opts-t{font-size:13px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.04em;margin:12px 0 7px}
-        .qc-opts{display:grid;grid-template-columns:1fr 1fr;gap:7px}
-        .qc-opt{display:flex;flex-direction:column;gap:2px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:9px;padding:8px 11px}
-        .qc-opt-m{font-size:12.5px;font-weight:700;color:#64748b}
-        .qc-opt-v{font-size:18px;font-weight:800;color:#0f172a}
         .yt-wrap{position:absolute;inset:0;background:#000;overflow:hidden}
         .yt-wrap iframe{width:100%;height:100%;border:none;display:block;pointer-events:none}
         .yt-click{position:absolute;inset:0;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5}
@@ -2798,6 +3122,95 @@
         .cat-sp-fila{font-size:14.5px}
         .cat-sp-fila small{font-size:13px}
         .cat-sp-fila em{font-size:13.5px}
+        /* ===== Ajustes del 20/11/2026 (los pidió Nelson). Van al final: pisan a la capa de estilo. ===== */
+        /* Repuestos: la foto del equipo en su sección y las fotos de las piezas algo más grandes */
+        .cat-sec-head.con-equipo{display:flex;align-items:center;gap:12px}
+        .cat-sec-txt{flex:1;min-width:0}
+        .cat-eq-foto{flex-shrink:0;box-sizing:border-box;width:116px;height:116px;padding:6px;object-fit:contain;background:#fff;border:1px solid var(--border);border-radius:14px}
+        .cat-eq-foto.ancha{width:150px;height:92px}
+        .cat-eq-foto.alta{width:98px;height:134px}
+        .cat-equipos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 2px 4px}
+        .cat-equipos.n3{grid-template-columns:repeat(3,minmax(0,1fr))}
+        .cat-equipo{margin:0;background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden;text-align:center}
+        .cat-equipo img{display:block;box-sizing:border-box;width:100%;height:128px;padding:6px;object-fit:contain;background:#fff}
+        .cat-equipo figcaption{padding:7px 8px 8px;border-top:1px solid var(--border);font-size:13.5px;font-weight:700;line-height:1.25;color:var(--tinta)}
+        .fila-img{width:112px;height:86px}
+        .cat-blo-img{width:132px;height:76px}
+        @media(max-width:359px){.fila-img{width:96px;height:74px}.cat-eq-foto{width:96px;height:96px}.cat-eq-foto.ancha{width:118px;height:76px}.cat-eq-foto.alta{width:84px;height:116px}}
+        @media(min-width:700px){.cat-eq-foto{width:140px;height:140px}.cat-eq-foto.ancha{width:190px;height:112px}.cat-eq-foto.alta{width:116px;height:156px}.cat-equipos{max-width:620px}.cat-equipo img{height:160px}}
+        /* Menú: los especiales se notan más, sin gritar (antes iban en un tono muy suave y pasaban desapercibidos) */
+        .lista-btn.esp{background:linear-gradient(180deg,var(--espL) 0%,var(--espM) 100%);border:1.5px solid var(--espB);color:var(--espT);box-shadow:0 2px 8px rgba(234,88,12,.2)}
+        .lista-btn.esp:hover{border-color:var(--esp);color:var(--espT)}
+        .lista-btn.esp .lista-nom{font-weight:800}
+        .lista-esp{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:1px 5px;margin-top:2px;font-size:12px;line-height:1.15;color:var(--espT)}
+        .lista-esp b{padding:1.5px 7px;border-radius:100px;background:var(--esp);color:#fff;font-size:10px;line-height:1.2;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+        .lista-esp i{font-weight:700}
+        .lista-btn.esp.on{background:var(--esp);border-color:var(--esp);color:#fff;box-shadow:0 6px 16px rgba(194,65,12,.36)}
+        .lista-btn.esp.on .lista-esp{color:var(--espL)}
+        .lista-btn.esp.on .lista-esp b{background:#fff;color:var(--esp)}
+        /* Letras: nada tan chico (lo usan personas mayores). Los puntos y el ahorro de la autocompra, un 10 % más grandes. */
+        .lista-fecha{font-size:12.5px}
+        .lista-btn{font-size:13.5px}
+        @media(max-width:520px){.lista-btn{font-size:13px;padding:8px 5px}.lista-btn.esp{padding:5px 4px}}
+        @media(max-width:380px){.lista-btn{font-size:12.5px;padding-left:4px;padding-right:4px}.lista-btn.esp .lista-nom{font-weight:700}} /* en 360 px «Navidad Mágica» y «Tienda en Línea» entran en un renglón */
+        .nav-tab,.tour-ver,.results-info,.vid-wa,.mode-tab,.inst-m,.gan-fila,.cat-sec-vars span,.cat-sp-fila small,.cuenta-txt,.cap-err,.gift-row{font-size:13.5px}
+        .search-bar input{font-size:16px} /* con menos de 16 px el iPhone acerca la pantalla al tocar el buscador */
+        .search-bar{padding-top:8.5px;padding-bottom:8.5px} /* la letra más grande no hace más alto lo que queda fijo */
+        .cat-count,.play-label,.pcard-code,.mini-hint,.info-banner,.info-banner.sm,.alert-toast,.cat-pie,.cat-blo-head h3,.gan-aviso,.gan-check{font-size:13px}
+        .ptag,.price-lbl,.cbox-label,.cat-sec-fam,.gan-sub,.cm-row.hl em,.fila-pre small{font-size:12.5px}
+        .pcard-eti,.gan-niv-n{font-size:12px}
+        .fila-ext{font-size:11.5px}
+        .var-btn small{font-size:11px}
+        .pcard-det,.gan-tit{font-size:14px}
+        .tab-btn{font-size:14.5px}
+        .share-quote-btn{font-size:15px}
+        .gan-total{font-size:16px}
+        .points-note,.cm-row{font-size:13.75px}
+        .points-note strong,.inc-header strong,.cm-row.hl{font-size:15.4px}
+        .inc-header,.inc-level p,.prize-row{font-size:14.3px}
+        .inst-v{font-size:17px;margin-top:1px}
+        .inst-orig{font-size:13.5px;color:#64748b;margin-top:2px}
+        .cm-save{font-weight:800}
+        .cm-row.ahorro{align-items:center;margin:5px -8px;padding:5px 8px;border-radius:8px;background:var(--greenL);color:#065f46;font-weight:700} /* el ahorro de la autocompra, a la vista */
+        .cm-row.ahorro .cm-save{font-size:15.4px;color:#047857}
+        /* La inicial: se nota que se puede cambiar y cómo confirmar */
+        .cbox.editable{cursor:text;transition:border-color .15s,box-shadow .15s}
+        .cbox.editable.editando{border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.14)}
+        .cbox-ayuda{font-size:12px;line-height:1.25;font-weight:600;color:var(--blueD)}
+        .cbox-ok{flex-shrink:0;min-width:50px;height:36px;padding:0 13px;border:none;border-radius:9px;background:var(--blue);color:#fff;font-family:inherit;font-size:14.5px;font-weight:800;cursor:pointer;box-shadow:0 3px 8px rgba(37,99,235,.3)}
+        .cbox-ok.ancho{display:block;width:100%;height:38px;margin-top:5px}
+        .cbox-value{animation:fadeIn .25s ease-out}
+        .sin-credito{font-size:13px;line-height:1.4;color:var(--muted);font-weight:500}
+        /* Pie de la ficha: compartir y copiar la cotización */
+        .copy-quote-btn{flex:0 0 auto;display:flex;align-items:center;justify-content:center;gap:6px;padding:0 15px;border:1.5px solid var(--blueB);border-radius:12px;background:#fff;color:var(--blueD);font-family:inherit;font-size:14.5px;font-weight:800;cursor:pointer}
+        .copy-quote-btn:disabled{opacity:.6;cursor:default}
+        .share-quote-btn.lista{background:var(--green);box-shadow:0 8px 20px rgba(4,120,87,.3)}
+        .cap-ok{background:var(--greenL);color:#065f46;border:1px solid var(--greenB);border-radius:8px;padding:7px 10px;font-size:13.5px;font-weight:600;line-height:1.35;text-align:center;margin-bottom:8px}
+        /* Envío del video: avance, «listo» y enlace de respaldo */
+        .vid-wa.listo,.fv-wa.listo{background:var(--green);box-shadow:0 0 0 4px rgba(4,120,87,.25),0 6px 16px rgba(4,120,87,.4)}
+        .vid-wa.bajando{opacity:1;background:#128c4a}
+        .vid-estado{position:absolute;left:10px;right:10px;bottom:58px;z-index:7;display:flex;flex-direction:column;gap:7px;padding:10px 12px;border-radius:12px;background:rgba(15,23,42,.93);color:#fff;font-size:13.5px;font-weight:600;line-height:1.35;box-shadow:0 8px 20px rgba(0,0,0,.3)}
+        .vid-estado.en-video{left:auto;right:0;bottom:56px;width:min(290px,78vw)}
+        .vid-barra{display:block;height:6px;border-radius:6px;background:rgba(255,255,255,.22);overflow:hidden}
+        .vid-barra i{display:block;height:100%;border-radius:6px;background:#25D366;transition:width .2s}
+        .vid-enlace{align-self:flex-start;padding:2px 0;border:0;background:none;color:#a7f3d0;font-family:inherit;font-size:13.5px;font-weight:700;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+        @media(max-width:380px){.share-quote-btn{font-size:14px;padding-left:8px;padding-right:8px}.copy-quote-btn{padding:0 11px;font-size:14px}}
+        .share-quote-btn{white-space:nowrap}
+        .share-quote-btn.lista{white-space:normal}
+        /* Panel de actividad (admin) */
+        .act-totales{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:12px 0 2px}
+        .act-total{background:#fff;border:1px solid var(--border);border-radius:12px;padding:10px 6px;text-align:center}
+        .act-total strong{display:block;font-size:21px;font-weight:800;line-height:1.1}
+        .act-total span{display:block;margin-top:3px;font-size:12.5px;font-weight:600;line-height:1.2;color:var(--muted)}
+        .act-persona{background:#fff;border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:7px}
+        .act-persona strong{display:block;font-size:14.5px;font-weight:800;line-height:1.25}
+        .act-persona small{display:block;margin-top:2px;font-size:12.5px;line-height:1.35;color:var(--muted)}
+        .act-datos{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+        .act-datos span{padding:3px 9px;border-radius:100px;background:var(--suave);border:1px solid var(--border);font-size:12.5px;font-weight:700;color:#334155}
+        .act-datos span.cero{opacity:.45}
+        .act-dia{flex-shrink:0;max-width:66%;text-align:right;font-size:12.5px;font-weight:600;line-height:1.35;color:#334155}
+        .act-hora{flex-shrink:0;font-size:12px;font-weight:600;color:var(--muted);white-space:nowrap}
+        .sim-name small{font-size:12px;font-weight:500;color:var(--muted)}
       `;
   (function () {
     try {
@@ -2837,19 +3250,37 @@
       productos: (catalogoTodo.productos || []).filter((p) => LISTAS_VISTA_COMPLETA.indexOf(p.lista) < 0)
     }), [catalogoTodo, completa]);
     useEffect(() => {
-      let vivo = true;
-      (async () => {
-        const tk = leerTok(SESION_KEY);
-        if (!tk || !sb) { if (vivo) setVerificando(false); return; }
+      let vivo = true, espera = null, intento = 0;
+      const tk = leerTok(SESION_KEY);
+      if (!tk || !sb) { setVerificando(false); return; }
+      // Quien ya entró en este equipo pasa de inmediato, con lo que se recordaba, y la sesión se confirma por detrás. Solo se
+      // cierra si la base dice que ya no vale: una falla de la red o de la base no saca a nadie (antes cualquier falla
+      // borraba la sesión y volvía a pedir el DNI).
+      const rec = sesionRecordada(tk);
+      sesionTok = tk;
+      if (rec) { setSesion({ token: tk, nombre: rec.nombre, celular: rec.celular, completa: !!rec.completa }); setVerificando(false); }
+      const validar = async () => {
         try {
           const { data, error } = await sb.rpc("asesor_sesion_valida", { p_token: tk });
           if (error) throw error;
-          if (data && data.ok) { sesionTok = tk; if (vivo) setSesion({ token: tk, nombre: data.nombre, celular: data.celular, completa: !!data.completa }); }
-          else guardarTok(SESION_KEY, "");
-        } catch (e) { guardarTok(SESION_KEY, ""); }
-        if (vivo) setVerificando(false);
-      })();
-      return () => { vivo = false; };
+          if (!vivo || leerTok(SESION_KEY) !== tk) return;   // mientras tanto cerró sesión
+          if (data && data.ok) {
+            const s = { token: tk, nombre: data.nombre, celular: data.celular, completa: !!data.completa };
+            recordarSesion(s); setSesion(s); setVerificando(false);
+            rastrear("visita", contexto());
+          } else {
+            guardarTok(SESION_KEY, ""); recordarSesion(null); sesionTok = ""; setSesion(null); setVerificando(false);
+          }
+        } catch (e) {
+          if (!vivo || leerTok(SESION_KEY) !== tk) return;
+          if (!rec) { setSesion((s) => s || { token: tk, nombre: "", celular: "", completa: false }); setVerificando(false); }
+          if (intento < 4) espera = setTimeout(validar, [3000, 10000, 30000, 90000][intento++]);
+        }
+      };
+      validar();
+      const alVolver = () => { if (vivo && intento > 0) { clearTimeout(espera); validar(); } };
+      window.addEventListener("online", alVolver);
+      return () => { vivo = false; clearTimeout(espera); window.removeEventListener("online", alVolver); };
     }, []);
     useEffect(() => {
       if (!sesion) return;
@@ -2864,6 +3295,7 @@
     const salir = () => {
       rastrear("sesion_fin", {});
       guardarTok(SESION_KEY, "");
+      recordarSesion(null);
       sesionTok = "";
       enTour = false; setCuentaOpen(false); setTour(null); setSelectedId(null); setSimOpen(false); setPromosOpen(false);
       setCart([]); setSearchQuery(""); setActiveLista("general"); setActiveCat(TODAS_KEY);
@@ -3059,6 +3491,12 @@
       const y = altoNavTop();
       if ((window.scrollY || 0) > y || window.innerWidth < 700) window.scrollTo(0, y);
     }, [isSearching]);
+    useEffect(() => {
+      const q = searchQuery.trim();
+      if (!sesion || q.length < 3) return;
+      const t = setTimeout(() => rastrear("buscar", { lista: activeLista, texto: q.slice(0, 40), resultados: searchResults.length }), 2500);
+      return () => clearTimeout(t);
+    }, [searchQuery]);
     const etiquetaLista = (k) => {
       const l = listas.find((x) => x.key === k);
       return l ? l.labelCorto || l.label : k;
@@ -3171,8 +3609,6 @@
         return { secs: secs.length > 1 ? secs.slice(0, -1).join(", ") + " y " + secs[secs.length - 1] : secs[0] || "" };
       };
       return [
-        { titulo: "¡Hola! Te mostramos el portal", antes: alInicio,
-          texto: "En un par de minutos verás lo principal: las listas, las cuotas, la inicial, la autocompra, los videos, las promociones, los repuestos y los servicios." },
         { titulo: "Elige la lista", sel: [".lista-switch"], antes: alInicio,
           texto: "Toca una lista para ver sus precios. «" + nombreDe(gen) + "» tiene todos los productos." + (promo ? " Las de color naranja son especiales y dicen hasta qué día valen." : "") },
         { titulo: "Busca un producto", sel: [".search-bar", ".nav-tabs"], antes: alInicio,
@@ -3188,15 +3624,15 @@
         demo && { titulo: "Mira las cuotas", sel: [".modal-box .tab-bar", ".modal-box .installments-grid"], requiere: ".modal-box .installments-grid", antes: () => enCliente(1),
           texto: "Toca «Crédito» para ver las cuotas. Cada botón es un plazo: los meses y cuánto se paga al mes." },
         demo && { titulo: "Sube la inicial", sel: [".modal-box .tab-content .cbox.editable", ".modal-box .installments-grid"], requiere: ".modal-box .installments-grid", antes: subirInicial,
-          texto: (d) => d ? "Toca el monto de la inicial y escribe lo que da tu cliente. Mira: con " + d.inicial + " de inicial, la cuota de " + d.meses + " meses baja de " + d.de + " a " + d.a + "."
-            : "Toca el monto de la inicial y escribe lo que da tu cliente: mientras más inicial, más baja la cuota." },
+          texto: (d) => d ? "Toca el monto de la inicial, escribe lo que da tu cliente y toca OK. Mira: con " + d.inicial + " de inicial, la cuota de " + d.meses + " meses baja de " + d.de + " a " + d.a + "."
+            : "Toca el monto de la inicial, escribe lo que da tu cliente y toca OK: mientras más inicial, más baja la cuota." },
         demo && { titulo: "Autocompra", sel: [".modal-box .mode-tabs", ".modal-box .auto-ticket"], requiere: ".modal-box .auto-ticket", antes: enAuto,
           texto: "Si el producto es para ti o para uno de tus afiliados, toca «Precio Autocompra»: ves el precio ya con el descuento. También tiene contado y crédito." },
         demo && { titulo: "Puntos y Empiece Ya", sel: [".modal-box .incentives", ".modal-box .gan.equipo"], requiere: ".modal-box .incentives",
           antes: async () => { await enAuto(); return { meta: !!document.querySelector(".modal-box .inc-level"), equipo: !!document.querySelector(".modal-box .gan.equipo") }; },
           texto: (d) => "Aquí ves los puntos de la autocompra." + (!d || d.meta ? " En tus primeras 4 semanas (Empiece Ya), te dice qué premio ganas y cuántos puntos y afiliados te faltan." : "") + (d && d.equipo ? " Abajo, lo que ganas tú si compra tu afiliado." : "") },
-        demo && { titulo: "Comparte la cotización", sel: [".modal-box .share-quote-btn"], antes: async () => { await conFicha(); await tocar(".modal-box .mode-tab", 0); },
-          texto: "Arma una imagen con el precio, la inicial o las cuotas que elegiste, lista para mandar a tu cliente por WhatsApp." },
+        demo && { titulo: "Comparte la cotización", sel: [".modal-box .quote-actions"], antes: async () => { await conFicha(); await tocar(".modal-box .mode-tab", 0); },
+          texto: "Arma una imagen con el precio al contado y todas las cuotas, lista para mandar a tu cliente por WhatsApp. Con «Copiar» la pegas en un chat que ya tienes abierto." },
         promoProd && { titulo: "Las promociones", sel: [".tile" + pid(promoProd)], antes: () => irA(promo.key),
           texto: "Las promociones vigentes tienen su lista, en naranja: «" + nombreDe(promo.key) + "»" + (promo.hasta ? ", hasta el " + diaMesCorto(promo.hasta) : "") + ". Cada especial trae sus productos y su regalo." },
         promoProd && { titulo: "Una promoción por dentro", sel: [".modal-box .gift-row", ".modal-box .mode-tabs", ".modal-box .price-block"], requiere: ".modal-box .price-block",
@@ -3215,24 +3651,19 @@
     };
     const abrirTour = (origen) => {
       setCuentaOpen(false);
-      guardarTok(TOUR_KEY, "1");   // sale solo la primera vez; después, desde «Ver tutorial»
       rastrear("tutorial", { accion: "inicio", origen });
       enTour = true;
-      setTour({ n: Date.now(), origen, desde: origen === "primera vez" ? 0 : 1, pasos: armarTour() });
+      setTour({ n: Date.now(), origen, desde: 0, pasos: armarTour() });
     };
     const terminarTour = (accion, paso, total) => {
       rastrear("tutorial", { accion, paso: paso + 1, de: total, origen: tour ? tour.origen : "" });
       enTour = false;
+      quitarRelleno();
       setTour(null);
       setSelectedId(null);
       setSearchQuery("");
       try { window.scrollTo(0, 0); } catch (e) {}
     };
-    useEffect(() => {
-      if (!sesion || adminOpen || tour || catalogoState !== "ok" || !catalogo.productos.length || leerTok(TOUR_KEY)) return;
-      const t = setTimeout(() => abrirTour("primera vez"), 700);
-      return () => clearTimeout(t);
-    }, [sesion, adminOpen, catalogoState, catalogo.productos.length]);
     if (verificando) return h("div", { className: "login-espera" }, "Un momento\u2026");
     if (!sesion && !adminOpen) return h(Ingreso, { onEntrar: (d) => { sesionTok = d.token; setSesion(d); } });
     return h("div", { className: "app" }, h("header", { className: "header" }, h("div", { className: "header-in" }, h("h1", { className: "header-t", onClick: irArriba }, "Precios y Promociones"), h("div", { className: "header-right" }, bonoActivoLista.activo && !(listaActual && listaActual.sinPuntos) && h("div", { className: "bonus-pill", title: (bonoInfo.semana ? `${bonoInfo.semana}% por ser primera semana del per\xEDodo` : "Puntaje adicional vigente") + (bonoActivoLista.extra ? ` + ${bonoActivoLista.extra}% de esta lista` : "") }, h(ClockSvg, null), h("span", null, "+", bonoActivoLista.porcentaje, "%")), sesion && h("div", { className: "cuenta" }, h("button", { className: "header-cuenta", onClick: () => setCuentaOpen(!cuentaOpen), "aria-label": "Tu sesi\xF3n", "aria-expanded": cuentaOpen ? "true" : "false" }, h(CuentaSvg, null)), cuentaOpen && h("div", { className: "cuenta-fondo", onClick: () => setCuentaOpen(false) }), cuentaOpen && h("div", { className: "cuenta-menu", role: "dialog", "aria-label": "Tu sesi\xF3n" }, h("div", { className: "cuenta-nom" }, sesion.nombre || "Tu sesi\xF3n"), h("p", { className: "cuenta-txt" }, "Este equipo te recuerda: no tienes que escribir tu DNI cada vez."), h("button", { className: "cuenta-tour", onClick: () => abrirTour("menu") }, h(AyudaSvg, null), "Ver tutorial"), h("button", { className: "cuenta-salir", onClick: salir }, "Cerrar sesi\xF3n")))))), h("main", { className: "main" }, h("div", { className: "nav-top", ref: navTopRef }, h("div", { className: "nav-top-fila" }, h("button", { type: "button", className: "tour-ver", onClick: () => abrirTour("boton") }, h(AyudaSvg, null), "Ver tutorial"), listas.length > 1 && listaActual && listaActual.actualizada && h("div", { className: "lista-fecha" }, "Actualizada al ", new Date(listaActual.actualizada).toLocaleDateString("es-PE", { day: "2-digit", month: "short", year: "numeric", timeZone: "America/Lima" })))), h("div", { className: "menu-fijo", ref: menuRef }, h("div", { className: "lista-switch", style: { "--nd": listas.length <= 6 ? listas.length : Math.ceil(listas.length / 2) } }, listas.map((l, i) => h("button", { key: l.key, className: `lista-btn ${l.especial ? "esp " : ""}${activeLista === l.key ? "on" : ""}`, style: { "--sp": repartoListas(listas.length)[i] }, onClick: () => {
