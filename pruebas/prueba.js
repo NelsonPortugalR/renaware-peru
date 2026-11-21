@@ -90,7 +90,8 @@ async function ingreso() {
   igual(await s.texto(".lista-btn.esp .lista-esp"), "Especial hasta 11 nov", "y dice que es especial y hasta cuándo");
   const esp = await p.evaluate(() => { const b = document.querySelector(".lista-btn.esp"), e = b.querySelector(".lista-esp b"), f = b.querySelector(".lista-esp i"), cb = getComputedStyle(b), ce = getComputedStyle(e);
     return { fondo: cb.backgroundImage !== "none", borde: cb.borderTopColor, sello: ce.backgroundColor, letra: ce.color, mayus: ce.textTransform, fecha: parseFloat(getComputedStyle(f).fontSize) }; });
-  ok(esp.fondo && esp.sello === "rgb(194, 65, 12)" && esp.letra === "rgb(255, 255, 255)" && esp.mayus === "uppercase" && esp.fecha >= 12, "el especial se nota: fondo naranja, sello ESPECIAL lleno y la fecha en letra legible → " + JSON.stringify(esp));
+  ok(esp.fondo && esp.borde === "rgb(30, 90, 168)" && esp.sello === "rgb(225, 29, 42)" && esp.letra === "rgb(255, 255, 255)" && esp.mayus === "uppercase" && esp.fecha >= 12, "el especial se nota y va con los colores de sus volantes: fondo amarillo, borde azul, sello ESPECIAL rojo y la fecha en letra legible → " + JSON.stringify(esp));
+  ok(/\blst-compartir\b/.test(await p.locator(".lista-btn.esp").getAttribute("class")), "cada lista de especiales lleva su clase, para darle sus colores");
   igual(await p.evaluate(() => { try { return JSON.parse(localStorage.getItem("rw_sesion_datos_v1")).nombre; } catch (e) { return ""; } }), "Nelson", "el equipo recuerda quién entró, para no volver a pedir el DNI");
   ok(await s.cuenta(".accion-btn") === 2, "con Simulador de puntos y Buscador maestro");
   const pedidos = Array.from(new Set(s.registro.pedidos)).sort();
@@ -452,6 +453,9 @@ async function parteAlta() {
     const e = await sesion({ movil: true, viewport: { width: 360, height: 640 }, cambiar: (m) => { dos(m); m.completa = completa; } });
     const quien = completa ? "vista completa" : "asesor";
     igual(await e.textos(".lista-btn.esp .lista-esp"), ["Especial hasta 23 dic", "Especial hasta 11 nov"], quien + ": los dos especiales, el que dura más primero");
+    const nav = await e.pagina.evaluate(() => { const b = document.querySelector(".lista-btn.lst-navidad-magica"), c = getComputedStyle(b), s = getComputedStyle(b.querySelector(".lista-esp b")), n = getComputedStyle(b, "::before");
+      return { fondo: c.backgroundImage, letra: c.color, borde: c.borderTopColor, sello: s.backgroundColor, nieve: n.backgroundImage !== "none" }; });
+    ok(/rgb\(27, 107, 69\)/.test(nav.fondo) && nav.letra === "rgb(255, 255, 255)" && nav.borde === "rgb(212, 167, 44)" && nav.sello === "rgb(200, 30, 30)" && nav.nieve, quien + ": Navidad Mágica va de Navidad: verde, borde dorado, sello rojo y copos de nieve → " + JSON.stringify(nav).slice(0, 140));
     const bs = await e.pagina.evaluate(() => Array.from(document.querySelectorAll(".lista-btn")).map((b) => { const n = b.querySelector(".lista-nom"), r = b.getBoundingClientRect(), i = b.querySelector(".lista-esp i");
       return { nombre: n.textContent, renglones: Math.round(n.getBoundingClientRect().height / parseFloat(getComputedStyle(n).lineHeight)), alto: Math.round(r.height), letra: parseFloat(getComputedStyle(n).fontSize), fecha: i ? parseFloat(getComputedStyle(i).fontSize) : 99, sale: n.scrollWidth > b.clientWidth }; }));
     ok(bs.every((b) => b.renglones === 1 && !b.sale), quien + ": cada nombre entra en un renglón → " + JSON.stringify(bs.filter((b) => b.renglones !== 1 || b.sale)));
@@ -563,7 +567,7 @@ async function vistaAsesor() {
   ok(await s.cuenta(".accion-btn") === 0, "sin Simulador de puntos ni Buscador maestro");
   ok(/\bon\b/.test(await p.locator(".lista-btn", { hasText: "Lista General" }).getAttribute("class")), "entra en la Lista General");
   await s.lista("Compartir");
-  ok(/esp on/.test(await p.locator(".lista-btn", { hasText: "Compartir" }).getAttribute("class")) && await s.cuenta(".tile") > 0, "abre el especial y muestra sus fichas");
+  ok(/\besp\b.*\bon\b/.test(await p.locator(".lista-btn", { hasText: "Compartir" }).getAttribute("class")) && await s.cuenta(".tile") > 0, "abre el especial y muestra sus fichas");
   await s.lista("Repuestos");
   ok(await s.cuenta(".accion-btn") === 0 && await s.cuenta(".fila") > 0, "Repuestos se ve igual, sin los botones de la vista completa");
   await s.fin("asesor que entra con su DNI");
@@ -636,7 +640,7 @@ async function tutorial() {
   igual([t.titulo, t.n], ["Elige la lista", "1 de 17"], "al tocarlo empieza por el menú de listas, sin saludo");
   igual(t.botones, ["Saltar tutorial", "Siguiente"], "y se puede saltar desde el inicio");
   await revisar(t, ".lista-switch", "resalta el menú de listas");
-  ok(/naranja/.test(t.texto), "explica que las naranjas son especiales");
+  ok(/ESPECIAL/.test(t.texto) && /hasta qué día/.test(t.texto), "explica que las que dicen ESPECIAL son promociones");
   await s.foto("tutorial-1-listas");
   t = await sig(t);
   await revisar(t, ".search-bar", "resalta el buscador");
@@ -932,7 +936,7 @@ const hojaDeCompartir = (pagina) => pagina.evaluate(() => {
     const f = window.__falla.shift();
     if (f) { const e = new Error(f); e.name = f; throw e; }
     const a = (d.files || [])[0], b = a ? await createImageBitmap(a) : null;
-    let tinta = 0, verde = 0, rojo = 0, borde = [];
+    let tinta = 0, verde = 0, rojo = 0, borde = [], rojoBorde = 0;
     if (b) {
       const c = document.createElement("canvas"); c.width = b.width; c.height = b.height;
       const g = c.getContext("2d"); g.drawImage(b, 0, 0);
@@ -945,8 +949,11 @@ const hojaDeCompartir = (pagina) => pagina.evaluate(() => {
       for (let i = 0; i < t.length; i += 4) { if (t[i + 1] > t[i] + 15 && t[i + 1] > t[i + 2] && t[i] < 90 && t[i + 1] < 130) v++; else if (t[i] > 130 && t[i + 1] < 80 && t[i + 2] < 90) r++; }
       verde = Math.round(v / (t.length / 4) * 1000) / 1000; rojo = Math.round(r / (t.length / 4) * 1000) / 1000;
       borde = Array.from(g.getImageData(6, 300, 1, 1).data).slice(0, 3);
+      const col = g.getImageData(4, 0, 1, c.height).data;   // el borde izquierdo de la imagen, de arriba abajo: ¿llega ahí la franja roja del regalo?
+      let rb = 0; for (let i = 0; i < col.length; i += 4) if (col[i] > 130 && col[i + 1] < 80 && col[i + 2] < 90) rb++;
+      rojoBorde = Math.round(rb / c.height * 1000) / 1000;
     }
-    window.__compartido.push({ nombre: a ? a.name : "", tipo: a ? a.type : "", bytes: a ? a.size : 0, ancho: b ? b.width : 0, alto: b ? b.height : 0, cuantos: (d.files || []).length, tinta, verde, rojo, borde });
+    window.__compartido.push({ nombre: a ? a.name : "", tipo: a ? a.type : "", bytes: a ? a.size : 0, ancho: b ? b.width : 0, alto: b ? b.height : 0, cuantos: (d.files || []).length, tinta, verde, rojo, borde, rojoBorde });
   } });
 });
 async function cotizacion() {
@@ -961,7 +968,9 @@ async function cotizacion() {
   await p.locator(".tile .tile-btn").first().click(); await p.waitForTimeout(450);
   const todas = [3, 6, 9, 12, 15, 18];
   let m = await s.cot((x) => x.chip === "Precio Cliente" && esContado(x));
-  igual(m && [m.nombre, m.codigo, m.chip, m.auto, m.regalo], ["Juego Gourmet serie Zylstra", "Cod. 000158 - N° 1", "Precio Cliente", false, ""], "dice el producto, su código y que es el precio de cliente");
+  igual(m && [m.nombre, m.codigo, m.auto, m.promo], ["Juego Gourmet serie Zylstra", "Cod. 000158 - N° 1", false, false], "dice el producto y su código");
+  igual(m && m.asesor, { nombre: "Nelson", celular: "987 654 321" }, "y quién atiende: su nombre y su celular, como están en la base");
+  ok(m && !("ahorro" in m), "sin ahorro, que es de la autocompra");
   igual(m && m.bloques.map((b) => b.titulo), ["Al contado"], "con Contado tocado lleva solo el contado");
   igual(m && [m.bloques[0].total, m.bloques[0].pie], [{ t: "Precio contado", v: "S/ 9,629" }, [{ t: "Inicial", v: "S/ 963" }, { t: "Saldo contra entrega", v: "S/ 8,666" }]], "con el precio, la inicial y el saldo contra entrega");
   await pestana("Crédito");
@@ -1014,6 +1023,11 @@ async function cotizacion() {
   await pestana("Crédito");
   m = await s.cot((x) => x.auto && esCredito(x));
   igual(m && [m.bloques[0].filas, m.bloques[0].cuotas], [[{ t: "Tu inicial", v: "S/ 2,000" }], todas.map((n) => ({ t: n + " cuotas de", v: soles(cuotaDe(tuPrecio - 2000, n)), antes: soles(cuotaDe(7629, n)) }))], "al crédito: tu inicial y, en cada plazo, la cuota del cliente (tachada) y la tuya");
+  igual(m && m.ahorro, { t: "Ahorro en 18 cuotas", v: soles((cuotaDe(7629, 18) - cuotaDe(tuPrecio - 2000, 18)) * 18) }, "y abajo, el ahorro por ser autocompra en el plazo elegido (el mismo «Total ahorro» de la ficha)");
+  igual(num(await s.texto(".modal-box .cm-row.ahorro .cm-save")), m ? num(m.ahorro.v) : -1, "que es el que muestra la ficha");
+  await p.locator(".modal-box .inst-btn", { hasText: "12 meses" }).click();
+  m = await s.cot((x) => x.auto && esCredito(x) && x.ahorro && /12 cuotas/.test(x.ahorro.t));
+  igual(m && m.ahorro, { t: "Ahorro en 12 cuotas", v: soles((cuotaDe(7629, 12) - cuotaDe(tuPrecio - 2000, 12)) * 12) }, "si se toca otro plazo, el ahorro es el de ese plazo");
   c = await compartir();
   igual([c[c.length - 1].nombre, c[c.length - 1].ancho, c[c.length - 1].alto], ["cotizacion-000158-autocompra-credito-ini2000.png", 1080, 1350], "sale con su nombre y del mismo tamaño");
   await s.cerrarFicha();
@@ -1024,8 +1038,7 @@ async function cotizacion() {
   const conPromo = await s.cuenta(".modal-box .price-reg") > 0;
   m = await s.cot((x) => x.chip === "Precio Cliente" && !/000158/.test(x.codigo) && esContado(x));
   igual(m && m.bloques[0].filas.map((f) => f.t), conPromo ? ["Precio regular", "Descuento"] : [], conPromo ? "el especial al contado, con su precio regular tachado y el descuento" : "el especial al contado, sin precio regular porque no lo tiene");
-  const regalo = await s.texto(".modal-box .gift-row");
-  ok(m && m.regalo.length > 3 && regalo.indexOf(m.regalo) >= 0, "y con su regalo escrito (en la foto no se alcanza a leer) → " + (m && m.regalo));
+  ok(m && m.promo === true && !("regalo" in m), "marcado como especial (va más apretado, para darle sitio a la foto); el regalo no va escrito: va la franja de su foto");
   await pestana("Crédito");
   m = await s.cot((x) => !/000158/.test(x.codigo) && esCredito(x));
   ok(m && m.bloques[0].cuotas.length >= 3 && m.bloques[0].cuotas.every((q) => /^S\/ [\d,]+$/.test(q.v)), "y al crédito, con sus cuotas → " + JSON.stringify(m && m.bloques[0].cuotas.map((q) => q.t + " " + q.v)));
@@ -1064,29 +1077,33 @@ async function cotizacion() {
   ok(cf.length === 1 && cf[0].ancho === 1080 && cf[0].alto === 1350 && cf[0].tinta > 0.05, "con la foto arriba, grande, y del mismo tamaño → " + JSON.stringify(cf[0]));
   await f.fin("cotización con foto");
 
-  titulo("La foto de un especial: sin sus franjas y de lado a lado");
+  titulo("Quién atiende, en la cotización");
+  const qa = await sesion({ movil: true, quien: { nombre: "MARIA JESUS FERNANDEZ-DAVILA SAN ROMAN DE LLERENA", celular: "45678912" }, cambiar: sinBono });
+  await qa.pagina.locator(".tile .tile-btn").first().click(); await qa.pagina.waitForTimeout(450);
+  igual((await qa.cot((x) => /000158/.test(x.codigo)) || {}).asesor, { nombre: "Maria Jesus Fernandez-Davila San Roman de Llerena", celular: "" }, "el nombre va como se escribe, no en mayúsculas; y si la persona no tiene celular en la base (su llave es el DNI), no sale ningún número");
+  ok(JSON.stringify(await qa.pagina.evaluate(() => window.__cotizacion)).indexOf("45678912") < 0, "el DNI no aparece en ninguna parte de la cotización");
+  await qa.fin("quién atiende, sin celular");
+  const qb = await sesion({ movil: true, quien: { nombre: "", celular: "912345678" }, cambiar: sinBono });
+  await qb.pagina.locator(".tile .tile-btn").first().click(); await qb.pagina.waitForTimeout(450);
+  igual((await qb.cot((x) => /000158/.test(x.codigo)) || {}).asesor, { nombre: "", celular: "912 345 678" }, "si no se sabe el nombre, va solo el celular");
+  await qb.fin("quién atiende, sin nombre");
+
+  titulo("La foto de un especial: los productos grandes y la franja del regalo de lado a lado");
   /* La foto de un especial de Navidad trae arriba una franja verde (su número y el descuento) y abajo una roja (el regalo).
-     En la cotización se quitan (el número y el regalo van escritos) para que los productos salgan grandes. Sin la franja
-     verde queda el verde oscuro de los rótulos y las verduras (0.5 % de la imagen); con ella, aun con la foto chica de la
-     versión anterior, era el 2.6 %. */
+     En la cotización la de arriba se quita (el número va en el nombre), los productos se recortan al ras y van lo más
+     grandes posible sobre su mismo fondo, y la franja del regalo va debajo a todo el ancho. Sin la franja verde queda el
+     verde oscuro de los rótulos y las verduras (menos del 1 % de la imagen); con ella, aun con la foto chica, era el 2.6 %. */
   fs.copyFileSync(path.join(RAIZ, "promociones", "385800.webp"), path.join(dirFotos, "382000.webp"));
-  fs.copyFileSync(path.join(RAIZ, "promociones", "385800.webp"), path.join(dirFotos, "000158.webp"));
   const e = await sesion({ movil: true, fotos: [dirFotos], cambiar: (m) => { sinBono(m); m.config.imagenes["382000"] = "https://kiexpdaaoegbtesqmaff.supabase.co/storage/v1/object/public/imagenes/382000-1.webp"; } });
   await hojaDeCompartir(e.pagina);
   await e.lista("Compartir");
   await e.pagina.locator(".tile .tile-btn").first().click(); await e.pagina.waitForTimeout(1300);
-  const me = await e.cot((x) => /382000/.test(x.codigo));
+  await e.cot((x) => /382000/.test(x.codigo));
   await e.pagina.locator(".modal-box .share-quote-btn").click(); await e.pagina.waitForTimeout(700);
-  let ce = await e.pagina.evaluate(() => window.__compartido);
-  ok(me && me.regalo.length > 3 && ce.length === 1 && ce[0].verde < 0.012 && ce[0].rojo < 0.01, "en un especial con regalo se van la franja verde de arriba y la roja de abajo → " + JSON.stringify(ce[0]));
-  ok(ce[0] && ce[0].borde.every((v) => v > 215) && ce[0].borde.some((v) => v < 250) && ce[0].tinta > 0.03, "y el fondo de la foto llega de lado a lado, sin espacio vacío a los costados → borde " + JSON.stringify(ce[0] && ce[0].borde));
-  await e.cerrarFicha();
-  await e.lista("Lista General");
-  await e.pagina.locator(".tile .tile-btn").first().click(); await e.pagina.waitForTimeout(1300);
-  await e.cot((x) => /000158/.test(x.codigo));
-  await e.pagina.locator(".modal-box .share-quote-btn").click(); await e.pagina.waitForTimeout(700);
-  ce = await e.pagina.evaluate(() => window.__compartido);
-  ok(ce.length === 2 && ce[1].verde < 0.012 && ce[1].rojo > 0.02, "si el producto no tiene el regalo escrito, la franja del regalo se queda en la foto → " + JSON.stringify(ce[1]));
+  const ce = await e.pagina.evaluate(() => window.__compartido);
+  ok(ce.length === 1 && ce[0].verde < 0.012, "se va la franja verde de arriba → " + JSON.stringify(ce[0]));
+  ok(ce[0] && ce[0].rojo > 0.05 && ce[0].rojoBorde > 0.08, "la franja roja del regalo se queda, como imagen y de borde a borde");
+  ok(ce[0] && ce[0].borde.every((v) => v > 215) && ce[0].borde.some((v) => v < 250) && ce[0].tinta > 0.08, "y el fondo de la foto llega de lado a lado, con los productos grandes → borde " + JSON.stringify(ce[0] && ce[0].borde) + ", tinta " + (ce[0] && ce[0].tinta));
   await e.fin("foto de un especial");
   fs.rmSync(dirFotos, { recursive: true, force: true });
 }

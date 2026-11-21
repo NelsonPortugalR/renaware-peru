@@ -63,6 +63,15 @@ validan la sesión.
   (`admin_actividad`): totales, una tarjeta por persona, por día, equipos,
   productos más abiertos, búsquedas, fallas al compartir y últimos movimientos.
 
+## Listas de especiales en el menú
+
+Toda lista que no es de las fijas es un especial: su botón dice «ESPECIAL» y
+hasta qué día vale. Cada una puede tener sus colores con una regla
+`.lista-btn.esp.lst-<clave>` (al final de `ESTILOS`): Navidad Mágica va en
+verde con borde dorado, sello rojo y copos de nieve; Especiales para Compartir,
+en amarillo y azul como sus volantes. Una lista nueva sale naranja hasta que se
+le den los suyos.
+
 ## Sesión
 
 Quien entró con su DNI se queda dentro: el equipo guarda la sesión
@@ -91,18 +100,27 @@ mínimo; si no, la ficha dice «Solo al contado» y por qué.
 bibliotecas). **Siempre mide 1080 × 1350** (4:5, el formato vertical que
 WhatsApp muestra entero en el chat), igual para la lista general que para un
 especial, y **lleva lo que se está viendo**: con «Contado», el precio, la
-inicial y el saldo; con «Crédito», la inicial y todas las cuotas. En
-autocompra suma el descuento (o la cuota del cliente tachada junto a la del
-asesor); no lleva puntos ni premios, para que la foto del producto salga
-grande. La letra es grande para que se lea en el chat sin abrir la imagen; si
-el contenido es mucho, se reduce un poco antes que achicar la foto. A la foto
-de un especial se le quitan sus franjas (la de arriba, con el número y el
-descuento, y la de abajo, con el regalo): el regalo va escrito aparte
-(`productos.regalo`) y el fondo de la foto se extiende de lado a lado, así los
-productos se distinguen. La imagen se prepara sola apenas cambia algo,
-para que el celular abra sus opciones en el mismo toque; si el celular se
-niega, queda «Imagen lista: toca para enviar». Los datos de la imagen quedan en
-`window.__cotizacion` (lo usan las pruebas).
+inicial y el saldo; con «Crédito», la inicial y todas las cuotas. Arriba, junto
+a la fecha, va **quién atiende**: el nombre y el celular de la sesión (el
+celular solo si lo tiene en la base; el DNI no se muestra nunca).
+
+En autocompra suma el descuento o, al crédito, la cuota del cliente tachada
+junto a la del asesor y abajo el **ahorro** en el plazo elegido (el «Total
+ahorro» de la ficha); no lleva puntos ni premios. El rótulo junto al código
+va solo en autocompra y en «Precio Asesor».
+
+La letra es grande para que se lea en el chat sin abrir la imagen; si el
+contenido es mucho, se reduce un poco antes que achicar la foto. En un
+especial todo va más apretado para darle sitio a la foto: se le quita la franja
+de arriba (el número y el descuento ya van en el nombre), los productos se
+recortan al ras y se agrandan sobre su mismo fondo, y **la franja del regalo va
+debajo como imagen, de lado a lado** (el regalo ya no se escribe). Una foto sin
+franjas (una composición cuadrada) va entera.
+
+La imagen se prepara sola apenas cambia algo, para que el celular abra sus
+opciones en el mismo toque; si el celular se niega, queda «Imagen lista: toca
+para enviar». Los datos de la imagen quedan en `window.__cotizacion` (lo usan
+las pruebas).
 
 ## Video
 
@@ -151,7 +169,7 @@ valores comisionables. Los datos de `pruebas/datos.json` usan cifras inventadas.
 ## Pruebas
 
 ```
-node pruebas/prueba.js            # todo (unos 3 minutos)
+node pruebas/prueba.js            # todo (unos 3 minutos; 530 verificaciones)
 SOLO=servicios node pruebas/prueba.js
 SOLO=inicial,cotizacion,video,permanencia node pruebas/prueba.js
 node pruebas/prueba.js capturas/  # además deja capturas

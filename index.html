@@ -96,6 +96,14 @@
     };
   };
   var sesionTok = "";
+  // Quién atiende, para la cotización: su nombre como se escribe (la base lo trae en mayúsculas) y su celular. La llave de la
+  // sesión es el celular o, si la persona no tiene uno en la base, su DNI (8 dígitos): el DNI nunca se muestra.
+  var sesionQuien = null;
+  var nombrePropio = (t) => String(t || "").trim().toLowerCase().split(/\s+/).filter(Boolean).map((w, i) => i > 0 && /^(de|del|la|las|los|y|da|dos)$/.test(w) ? w : w.replace(/(^|-)(.)/g, (x, g, l) => g + l.toUpperCase())).join(" ");
+  var datosAsesor = () => {
+    const s = sesionQuien || {}, c = String(s.celular || "").replace(/\D/g, "");
+    return { nombre: nombrePropio(s.nombre), celular: /^9\d{8}$/.test(c) ? c.slice(0, 3) + " " + c.slice(3, 6) + " " + c.slice(6) : "" };
+  };
   var enTour = false;   // mientras corre el tutorial, las listas y fichas que abre el recorrido no cuentan como uso
   var rastrear = (tipo, detalle) => {
     if (!sb || !sesionTok) return;
@@ -1323,8 +1331,8 @@
   // vertical que WhatsApp muestra entero en el chat, igual para un producto de la lista general que para un especial.
   // Lleva lo que la asesora está viendo: el contado, o el crédito con todas sus cuotas (Nelson, 20/11/2026: con los dos
   // juntos «todo se ve muy chico»). La letra es grande y la foto del producto, lo más grande posible: por eso la de
-  // autocompra no lleva los puntos ni el premio. `m` son solo datos (los arma la ficha) y `foto` la imagen del producto
-  // ya cargada con permiso para copiarla (o null).
+  // autocompra no lleva los puntos ni el premio. Arriba, con la fecha, va quién atiende (nombre y celular). `m` son solo
+  // datos (los arma la ficha) y `foto` la imagen del producto ya cargada con permiso para copiarla (o null).
   var FUENTE_COT = "'DM Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif";
   var fuentesCotizacion = () => {
     try {
@@ -1334,7 +1342,7 @@
   };
   var lienzoABlob = (c) => new Promise((res, rej) => { try { c.toBlob((b) => b ? res(b) : rej(new Error("sin imagen")), "image/png"); } catch (e) { rej(e); } });
   var dibujarCotizacion = (m, foto) => {
-    const W = 1080, H = 1350, M = 52, AN = W - 2 * M, CAB = 92, PIE = 40;
+    const W = 1080, H = 1350, M = 52, AN = W - 2 * M, PIE = 32;
     const C = { tinta: "#0f172a", texto: "#334155", suave: "#64748b", tenue: "#94a3b8", linea: "#e1e6ed", azul: "#1d4ed8", verde: "#047857", fondo: "#f5f7fb" };
     const lienzo = document.createElement("canvas");
     lienzo.width = W; lienzo.height = H;
@@ -1367,14 +1375,19 @@
       x.textAlign = "left";
       return w;
     };
-    // La foto. A la de un producto sobre fondo blanco se le quita el margen, para que el producto salga más grande. A la de
-    // un especial, que trae arriba una franja con su número y abajo otra con el regalo, se le quitan las franjas (el número
-    // y el regalo van escritos aparte, en grande) y su color de fondo se extiende a todo el ancho: así los productos se
-    // distinguen y no queda espacio vacío a los costados (Nelson, 20/11/2026).
+    // Arriba, con la marca y la fecha, quién atiende: su nombre y su celular (Nelson, 21/11/2026). Si no se sabe, no va.
+    const as = m.asesor || {}, quien = [as.nombre, as.celular ? "Cel. " + as.celular : ""].filter(Boolean).join("  \xB7  ");
+    const CAB = quien ? 110 : 92;
+    // La foto. Tres casos:
+    //  · un producto sobre fondo blanco: se le quita el margen, para que el producto salga más grande;
+    //  · la foto de un especial como las de Navidad, que trae arriba una franja con su número y el descuento y abajo otra con
+    //    el regalo: la de arriba se quita (el número va en el nombre), los productos se recortan al ras y van lo más grandes
+    //    posible sobre su mismo fondo, de lado a lado, y la franja del regalo va debajo, a todo el ancho;
+    //  · cualquier otra: entera, con las esquinas redondeadas.
     let fo = null;
     if (foto && foto.naturalWidth && foto.naturalHeight) {
       const fw0 = foto.naturalWidth, fh0 = foto.naturalHeight;
-      let rec = null, banda = null, fondo = "", rgb = null;
+      fo = { tipo: "entera", sx: 0, sy: 0, sw: fw0, sh: fh0 };
       try {
         const n = 64, c2 = document.createElement("canvas");
         c2.width = n; c2.height = n;
@@ -1384,169 +1397,212 @@
         let x0 = n, y0 = n, x1 = -1, y1 = -1;
         for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { const k = (j * n + i) * 4; if (d[k] < 243 || d[k + 1] < 243 || d[k + 2] < 243) { if (i < x0) x0 = i; if (i > x1) x1 = i; if (j < y0) y0 = j; if (j > y1) y1 = j; } }
         if (x1 >= 0 && ((x0 + n - 1 - x1) / n > 0.12 || (y0 + n - 1 - y1) / n > 0.12)) {
-          const fw = fw0 / n, fh = fh0 / n;
-          const sx = Math.max(0, x0 - 1) * fw, sy = Math.max(0, y0 - 1) * fh;
-          rec = { sx, sy, sw: Math.min(n, x1 + 2) * fw - sx, sh: Math.min(n, y1 + 2) * fh - sy };
-        }
-        if (!rec) {
+          const fw = fw0 / n, fh = fh0 / n, sx = Math.max(0, x0 - 1) * fw, sy = Math.max(0, y0 - 1) * fh;
+          fo = { tipo: "recortada", sx, sy, sw: Math.min(n, x1 + 2) * fw - sx, sh: Math.min(n, y1 + 2) * fh - sy };
+        } else {
           // franja = renglón de color (no claro) de lado a lado, pegado al borde de arriba o de abajo
-          const nx = 40, ny = 120, c3 = document.createElement("canvas");
+          const nx = 80, ny = 120, c3 = document.createElement("canvas");
           c3.width = nx; c3.height = ny;
           const g3 = c3.getContext("2d");
           g3.fillStyle = "#fff"; g3.fillRect(0, 0, nx, ny); g3.drawImage(foto, 0, 0, nx, ny);
           const q = g3.getImageData(0, 0, nx, ny).data;
           const osc = (i, j) => { const k = (j * nx + i) * 4; return Math.min(q[k], q[k + 1], q[k + 2]) < 150; };
-          const franja = (j) => { if (!osc(0, j) || !osc(1, j) || !osc(nx - 1, j) || !osc(nx - 2, j)) return false; let t = 0; for (let i = 0; i < nx; i++) if (osc(i, j)) t++; return t / nx >= 0.5; };
+          const franja = (j) => { if (!osc(0, j) || !osc(2, j) || !osc(nx - 1, j) || !osc(nx - 3, j)) return false; let t = 0; for (let i = 0; i < nx; i++) if (osc(i, j)) t++; return t / nx >= 0.5; };
           let a = 0, b = 0;
           while (a < ny * 0.4 && franja(a)) a++;
           while (b < ny * 0.4 && franja(ny - 1 - b)) b++;
           if (a < ny * 0.06) a = 0;
-          if (b < ny * 0.06 || !m.regalo) b = 0;   // la franja del regalo solo se quita si el regalo va escrito
-          if (a || b) {
-            const arriba = a ? a + ny * 0.02 : 0, abajo = b ? b + ny * 0.005 : 0;   // un poco más: el adorno de la franja cuelga sobre los productos
-            banda = { sx: 0, sy: arriba / ny * fh0, sw: fw0, sh: fh0 - (arriba + abajo) / ny * fh0 };
-            // el color de fondo de lo que queda: la mediana de sus bordes
-            const filas = [0.2, 0.4, 0.6, 0.8].map((t) => Math.round(arriba + (ny - arriba - abajo) * t)), muestras = [];
-            filas.forEach((j) => [1, nx - 2].forEach((i) => { const k = (j * nx + i) * 4; muestras.push([q[k], q[k + 1], q[k + 2]]); }));
-            const col = [0, 1, 2].map((u) => muestras.map((v) => v[u]).sort((p1, p2) => p1 - p2)[Math.floor(muestras.length / 2)]);
-            if (Math.min.apply(null, col) > 200) { fondo = "rgb(" + col.join(",") + ")"; rgb = col; }
+          if (b < ny * 0.06) b = 0;
+          if (a) {
+            const j0 = Math.ceil(a + ny * 0.02), j1a = ny - b;   // un poco más abajo de la franja: su adorno cuelga sobre los productos
+            // el color de fondo de la parte de los productos: la mediana de sus bordes
+            const muestras = [];
+            [0.2, 0.4, 0.6, 0.8].forEach((t) => [1, nx - 2].forEach((i) => { const k = (Math.round(j0 + (j1a - j0) * t) * nx + i) * 4; muestras.push([q[k], q[k + 1], q[k + 2]]); }));
+            const rgb = [0, 1, 2].map((u) => muestras.map((v) => v[u]).sort((p1, p2) => p1 - p2)[Math.floor(muestras.length / 2)]);
+            if (Math.min.apply(null, rgb) > 200) {
+              // dónde hay producto (lo que no es fondo). Lo que cuelga de la franja de arriba y se acaba enseguida no cuenta.
+              const cosa = (i, j) => { const k = (j * nx + i) * 4; return Math.abs(q[k] - rgb[0]) > 14 || Math.abs(q[k + 1] - rgb[1]) > 14 || Math.abs(q[k + 2] - rgb[2]) > 14; };
+              // el filo de la franja del regalo (una raya de lado a lado, más clara que la franja) es parte de la franja
+              const raya = (j) => { let t = 0; for (let i = 0; i < nx; i++) if (cosa(i, j)) t++; return t / nx >= 0.8; };
+              let j1 = ny - b;
+              if (b) { let extra = 0; while (extra < ny * 0.04 && raya(j1 - 1)) { j1--; extra++; } b = ny - j1; }
+              const alto = j1 - j0, tope = j0 + alto * 0.05, fin = j0 + alto * 0.09;
+              let bx0 = nx, bx1 = -1, by0 = ny, by1 = -1;
+              for (let i = 0; i < nx; i++) {
+                let desde = j0;
+                let r0 = j0; while (r0 < tope && !cosa(i, r0)) r0++;
+                if (r0 < tope) { let r1 = r0; while (r1 < fin && cosa(i, r1)) r1++; if (r1 < fin) desde = r1; }
+                for (let j = desde; j < j1; j++) if (cosa(i, j)) { if (i < bx0) bx0 = i; if (i > bx1) bx1 = i; if (j < by0) by0 = j; if (j > by1) by1 = j; }
+              }
+              if (bx1 < 0) { bx0 = 0; bx1 = nx - 1; by0 = j0; by1 = j1 - 1; }
+              bx0 = Math.max(0, bx0 - 2); bx1 = Math.min(nx - 1, bx1 + 2); by0 = Math.max(j0, by0 - 2); by1 = Math.min(j1 - 1, by1 + 2);
+              fo = { tipo: "franjas", sx: bx0 / nx * fw0, sy: by0 / ny * fh0, sw: (bx1 - bx0 + 1) / nx * fw0, sh: (by1 - by0 + 1) / ny * fh0,
+                fondo: "rgb(" + rgb.join(",") + ")", rgb, regalo: b ? { sx: 0, sy: (ny - b) / ny * fh0, sw: fw0, sh: b / ny * fh0 } : null };
+            }
           }
         }
-      } catch (e) { rec = null; banda = null; fondo = ""; rgb = null; }
-      fo = rec ? Object.assign({ recortada: true, fondo: "" }, rec) : banda ? Object.assign({ recortada: false, fondo, rgb, sinArriba: banda.sy > 0 }, banda) : { sx: 0, sy: 0, sw: fw0, sh: fh0, recortada: false, fondo: "" };
+      } catch (e) { fo = { tipo: "entera", sx: 0, sy: 0, sw: fw0, sh: fh0 }; }
     }
-    // Todo lo que va debajo de la foto, a una escala k. Con k = 1 la letra es la más grande; si así la foto quedara muy
-    // chica (un especial al crédito en autocompra: nombre largo, regalo y cuotas tachadas), se prueba con una escala algo menor.
+    const blo = (m.bloques || [])[0] || {}, cred = blo.tipo === "credito", promo = !!m.promo;
+    // Todo lo que va debajo de la foto, a una escala k. Con k = 1 la letra es la de siempre; si así la foto quedara chica,
+    // se prueba con una escala algo menor. En un especial (promo) lo de abajo va más apretado, para darle sitio a la foto:
+    // el contado sin su título, el crédito con la inicial en el renglón del título y, en autocompra, la cuota del cliente
+    // tachada al costado del plazo.
     const componer = (k) => {
       const z = (n) => Math.round(n * k);
       const pasos = [];
       const pon = (alto, pinta) => pasos.push({ alto, pinta });
-      // nombre: lo más grande que entre en dos renglones; el de un especial muy largo (dice todo lo que trae) va en tres
+      // nombre: lo más grande que entre en dos renglones; el de un especial muy largo va en tres. En autocompra al
+      // crédito, que trae más cosas, va 15 % más chico.
+      const fn = m.auto && cred ? 0.85 : 1;
       let fNom = "", nom = [], tNom = 0;
-      for (const t of [58, 52, 46, 42, 38]) { tNom = z(t); fNom = F(800, tNom); nom = partir(m.nombre, fNom, AN); if (nom.length <= 2) break; }
-      if (nom.length > 2) { tNom = z(42); fNom = F(800, tNom); nom = partir(m.nombre, fNom, AN, 3); }
+      for (const t of [58, 52, 46, 42, 38]) { tNom = z(t * fn); fNom = F(800, tNom); nom = partir(m.nombre, fNom, AN); if (nom.length <= 2) break; }
+      if (nom.length > 2) { tNom = z(42 * fn); fNom = F(800, tNom); nom = partir(m.nombre, fNom, AN, 3); }
       const lhNom = Math.round(tNom * 1.15);
-      pon(z(22) + nom.length * lhNom, (y) => nom.forEach((l, i) => txt(l, M, y + z(22) + Math.round(tNom * 0.84) + i * lhNom, fNom, C.tinta)));
-      // código y a quién es el precio
-      const fChip = F(800, z(25)), tChip = String(m.chip || "").toUpperCase(), hChip = z(48), wChip = mide(tChip, fChip, 1.2) + z(46);
-      const fCod = F(600, z(30)), cod = partir(m.codigo, fCod, AN - wChip - 16, 1)[0] || "";
-      pon(z(70), (y) => {
-        txt(cod, M, y + z(45), fCod, C.suave);
-        caja(W - M - wChip, y + z(11), wChip, hChip, hChip / 2);
-        x.fillStyle = m.auto ? C.tinta : "#eef4ff"; x.fill();
-        if (!m.auto) { x.strokeStyle = "#c7d7fe"; x.lineWidth = 2; x.stroke(); }
-        txt(tChip, W - M - wChip + z(23), y + z(11) + hChip / 2 + z(9), fChip, m.auto ? "#fff" : C.azul, { esp: 1.2 });
-      });
-      // el regalo del especial, escrito: en la foto no se alcanza a leer
-      if (m.regalo) {
-        const hG = z(58), fG = F(800, z(29)), tG = partir("Regalo: " + m.regalo, fG, AN - z(48), 1)[0] || "";
-        pon(z(6) + hG, (y) => {
-          caja(M, y + z(6), AN, hG, z(16)); x.fillStyle = "#ecfdf5"; x.fill(); x.strokeStyle = "#a7f3d0"; x.lineWidth = 2; x.stroke();
-          txt(tG, M + z(24), y + z(6) + hG / 2 + z(10), fG, "#065f46");
+      pon(z(20) + nom.length * lhNom, (y) => nom.forEach((l, i) => txt(l, M, y + z(20) + Math.round(tNom * 0.84) + i * lhNom, fNom, C.tinta)));
+      // código; y en autocompra, de quién es el precio (en la de cliente no hace falta decirlo)
+      const fCod = F(600, z(30));
+      if (m.auto) {
+        const fChip = F(800, z(25)), tChip = String(m.chip || "").toUpperCase(), hChip = z(46), wChip = mide(tChip, fChip, 1.2) + z(44);
+        const cod = partir(m.codigo, fCod, AN - wChip - 16, 1)[0] || "";
+        pon(z(62), (y) => {
+          txt(cod, M, y + z(42), fCod, C.suave);
+          caja(W - M - wChip, y + z(9), wChip, hChip, hChip / 2); x.fillStyle = C.tinta; x.fill();
+          txt(tChip, W - M - wChip + z(22), y + z(9) + hChip / 2 + z(9), fChip, "#fff", { esp: 1.2 });
         });
+      } else {
+        const cod = partir(m.codigo, fCod, AN, 1)[0] || "";
+        pon(z(48), (y) => txt(cod, M, y + z(38), fCod, C.suave));
       }
       // el bloque: al contado, o al crédito con todas sus cuotas
       (m.bloques || []).forEach((b) => {
-        const P = z(32), IN = AN - 2 * P, esCred = b.tipo === "credito", izq = M + P, der = W - M - P;
+        const P = z(28), IN = AN - 2 * P, izq = M + P, der = W - M - P;
         const filas = b.filas || [], pie = b.pie || [], cuotas = b.cuotas || [];
-        const hTit = b.titulo ? z(64) : 0;
-        const titulo = (cy) => {
-          txt(b.titulo.toUpperCase(), izq, cy + z(30), F(800, z(28)), C.tinta, { esp: 2.6 });
-          if (b.nota) txt(b.nota, der, cy + z(30), F(600, z(28)), C.suave, { der: true });
-          x.fillStyle = C.linea; x.fillRect(izq, cy + z(46), IN, 2);
-        };
-        if (esCred) {
-          const hIni = filas.length * z(74), gap = z(14), cw = (IN - 2 * gap) / 3;
-          const conAntes = cuotas.some((c) => c.antes), ch = conAntes ? z(154) : z(126), nf = Math.ceil(cuotas.length / 3);
-          const hCuo = cuotas.length ? z(10) + nf * ch + (nf - 1) * gap : 0;
-          const alto = P + hTit + hIni + hCuo + P - z(4);
-          pon(z(18) + alto, (y0) => {
-            const y = y0 + z(18);
+        const fTit = F(800, z(28));
+        if (b.tipo === "credito") {
+          const hTit = z(58), ini = filas[0] || null;
+          const hIni = ini && !promo ? z(66) : 0;
+          const gap = z(12), cw = (IN - 2 * gap) / 3, conAntes = cuotas.some((c) => c.antes), enLinea = conAntes && promo;
+          const tvBase = conAntes ? 46 : promo ? 50 : 54;   // la cuota: 54; en un especial, 8 % menos; en autocompra, 15 % menos
+          const ch = conAntes ? (enLinea ? z(108) : z(144)) : promo ? z(108) : z(118), nf = Math.ceil(cuotas.length / 3);
+          const hCuo = cuotas.length ? z(8) + nf * ch + (nf - 1) * gap : 0;
+          const hAho = m.ahorro ? z(10) + z(56) : 0;
+          const alto = P + hTit + hIni + hCuo + hAho + P - z(6);
+          pon(z(16) + alto, (y0) => {
+            const y = y0 + z(16);
             caja(M, y, AN, alto, z(28)); x.fillStyle = C.fondo; x.fill(); x.strokeStyle = C.linea; x.lineWidth = 2; x.stroke();
             let cy = y + P;
-            if (b.titulo) { titulo(cy); cy += hTit; }
-            filas.forEach((f) => { txt(f.t, izq, cy + z(51), F(600, z(40)), C.texto); txt(f.v, der, cy + z(53), F(800, z(50)), C.tinta, { der: true }); cy += z(74); });
-            cy += z(10);
-            const fL = F(700, z(28)), fA = F(600, z(28));
-            let tv = z(54);   // la cuota más larga decide el tamaño de todas: ninguna se sale de su casilla
-            while (tv > 30 && cuotas.some((c) => mide(c.v, F(800, tv)) > cw - z(36))) tv -= 2;
+            txt(String(b.titulo || "").toUpperCase(), izq, cy + z(30), fTit, C.tinta, { esp: 2.6 });
+            if (promo && ini) { const w = txt(ini.v, der, cy + z(32), F(800, z(40)), C.tinta, { der: true }); txt(ini.t, der - w - z(14), cy + z(30), F(600, z(30)), C.texto, { der: true }); }
+            else if (b.nota) txt(b.nota, der, cy + z(30), F(600, z(28)), C.suave, { der: true });
+            x.fillStyle = C.linea; x.fillRect(izq, cy + z(46), IN, 2);
+            cy += hTit;
+            if (hIni) { txt(ini.t, izq, cy + z(46), F(600, z(40)), C.texto); txt(ini.v, der, cy + z(48), F(800, z(50)), C.tinta, { der: true }); cy += hIni; }
+            cy += z(8);
+            let tv = z(tvBase);   // la cuota más larga decide el tamaño de todas: ninguna se sale de su casilla
+            while (tv > 30 && cuotas.some((c) => mide(c.v, F(800, tv)) > cw - z(32))) tv -= 2;
+            const fL = F(700, z(promo ? 26 : 28));
             cuotas.forEach((c, i) => {
-              const cx = izq + (i % 3) * (cw + gap), yy = cy + Math.floor(i / 3) * (ch + gap);
+              const cx = izq + (i % 3) * (cw + gap), yy = cy + Math.floor(i / 3) * (ch + gap), tx = cx + z(16);
               caja(cx, yy, cw, ch, z(18)); x.fillStyle = "#fff"; x.fill(); x.strokeStyle = "#dbe3ee"; x.lineWidth = 2; x.stroke();
-              txt(c.t, cx + z(18), yy + z(42), fL, C.suave);
-              if (c.antes) { txt(c.antes, cx + z(18), yy + z(80), fA, C.tenue, { tachado: true }); txt(c.v, cx + z(18), yy + z(134), F(800, tv), C.tinta); }
-              else txt(c.v, cx + z(18), yy + z(104), F(800, tv), C.tinta);
+              if (c.antes && enLinea) {   // «6 cuotas» y, al costado, la del cliente tachada
+                const rot = c.t.replace(/\s+de$/, ""), wr = mide(rot, fL);
+                let ta = z(30); while (ta > 22 && wr + z(10) + mide(c.antes, F(600, ta)) > cw - z(32)) ta -= 1;
+                txt(rot, tx, yy + z(38), fL, C.suave);
+                txt(c.antes, cx + cw - z(16), yy + z(38), F(600, ta), C.tenue, { der: true, tachado: true });
+                txt(c.v, tx, yy + z(90), F(800, tv), C.tinta);
+              } else if (c.antes) {
+                txt(c.t, tx, yy + z(40), fL, C.suave);
+                txt(c.antes, tx, yy + z(80), F(600, z(30)), C.tenue, { tachado: true });   // la del cliente, tachada: 8 % más grande que antes
+                txt(c.v, tx, yy + z(128), F(800, tv), C.tinta);
+              } else { txt(c.t, tx, yy + z(promo ? 38 : 40), fL, C.suave); txt(c.v, tx, yy + z(promo ? 90 : 98), F(800, tv), C.tinta); }
             });
+            if (m.ahorro) {   // lo que se ahorra por ser autocompra, en el plazo elegido en la ficha
+              const ya = cy + nf * ch + (nf - 1) * gap + z(10);
+              caja(izq, ya, IN, z(56), z(16)); x.fillStyle = "#ecfdf5"; x.fill(); x.strokeStyle = "#a7f3d0"; x.lineWidth = 2; x.stroke();
+              txt(m.ahorro.t, izq + z(20), ya + z(38), F(700, z(30)), "#065f46");
+              txt(m.ahorro.v, der - z(20), ya + z(39), F(800, z(36)), C.verde, { der: true });
+            }
           });
           return;
         }
-        const hFilas = filas.length * z(60);
-        const hTot = b.total ? (filas.length ? z(20) : 0) + z(116) + (b.total.nota ? z(40) : 0) : 0;
-        const hPie = pie.length ? z(18) + z(108) : 0;
+        const hTit = b.titulo && !promo ? z(58) : 0;
+        const hFilas = filas.length * z(54);
+        const tpBase = promo ? 92 : 100;   // el precio: en un especial, 8 % menos (el sitio es para la foto)
+        const hTot = b.total ? (filas.length ? z(18) : 0) + z(promo ? 104 : 114) + (b.total.nota ? z(40) : 0) : 0;
+        const hPie = pie.length ? z(14) + z(100) : 0;
         const alto = P + hTit + hFilas + hTot + hPie + P - z(6);
-        pon(z(18) + alto, (y0) => {
-          const y = y0 + z(18);
+        pon(z(16) + alto, (y0) => {
+          const y = y0 + z(16);
           caja(M, y, AN, alto, z(28)); x.fillStyle = "#fff"; x.fill(); x.strokeStyle = "#cfd8e3"; x.lineWidth = 2; x.stroke();
           let cy = y + P;
-          if (b.titulo) { titulo(cy); cy += hTit; }
+          if (hTit) { txt(b.titulo.toUpperCase(), izq, cy + z(30), fTit, C.tinta, { esp: 2.6 }); x.fillStyle = C.linea; x.fillRect(izq, cy + z(46), IN, 2); cy += hTit; }
           filas.forEach((f) => {
             const tach = f.estilo === "tachado";
-            txt(f.t, izq, cy + z(42), F(600, z(36)), C.texto);
-            txt(f.v, der, cy + z(42), F(tach ? 600 : 700, z(38)), tach ? C.tenue : f.estilo === "verde" ? C.verde : C.tinta, { der: true, tachado: tach });
-            cy += z(60);
+            txt(f.t, izq, cy + z(38), F(600, z(35)), C.texto);
+            txt(f.v, der, cy + z(38), F(tach ? 600 : 700, z(37)), tach ? C.tenue : f.estilo === "verde" ? C.verde : C.tinta, { der: true, tachado: tach });
+            cy += z(54);
           });
           if (b.total) {
-            if (filas.length) { x.fillStyle = "#e2e8f0"; x.fillRect(izq, cy + z(6), IN, 3); cy += z(20); }
+            if (filas.length) { x.fillStyle = "#e2e8f0"; x.fillRect(izq, cy + z(4), IN, 3); cy += z(18); }
             const rot = b.total.t.toUpperCase(), fR = F(800, z(30));
-            let tp = z(100);   // el precio: grande, pero sin quitarle sitio a la foto; y que entre al lado de su rótulo
+            let tp = z(tpBase);   // y que entre al lado de su rótulo
             while (tp > 60 && mide(rot, fR, 1) + z(24) + mide(b.total.v, F(800, tp)) > IN) tp -= 4;
-            txt(rot, izq, cy + z(76), fR, C.azul, { esp: 1 });
-            txt(b.total.v, der, cy + z(90), F(800, tp), C.tinta, { der: true });
-            cy += z(116);
+            const base = cy + (promo ? z(82) : z(90));
+            txt(rot, izq, base - Math.round(tp * 0.13), fR, C.azul, { esp: 1 });
+            txt(b.total.v, der, base, F(800, tp), C.tinta, { der: true });
+            cy += promo ? z(104) : z(114);
             if (b.total.nota) { txt(b.total.nota, der, cy + z(20), F(600, z(30)), C.suave, { der: true }); cy += z(40); }
           }
           if (pie.length) {   // la inicial y el saldo, en dos recuadros como en la ficha
-            cy += z(18);
-            const g = z(16), pw = (IN - (pie.length - 1) * g) / pie.length, fE = F(700, z(24));
+            cy += z(14);
+            const g = z(14), pw = (IN - (pie.length - 1) * g) / pie.length, fE = F(700, z(24));
             pie.forEach((f, i) => {
               const px = izq + i * (pw + g);
-              caja(px, cy, pw, z(108), z(18)); x.fillStyle = C.fondo; x.fill(); x.strokeStyle = C.linea; x.lineWidth = 2; x.stroke();
-              txt(partir(f.t.toUpperCase(), fE, pw - z(48), 1)[0] || "", px + z(18), cy + z(40), fE, C.suave, { esp: 0.8 });
-              txt(f.v, px + z(18), cy + z(88), F(800, z(46)), C.tinta);
+              caja(px, cy, pw, z(100), z(18)); x.fillStyle = C.fondo; x.fill(); x.strokeStyle = C.linea; x.lineWidth = 2; x.stroke();
+              txt(partir(f.t.toUpperCase(), fE, pw - z(48), 1)[0] || "", px + z(18), cy + z(38), fE, C.suave, { esp: 0.8 });
+              txt(f.v, px + z(18), cy + z(84), F(800, z(46)), C.tinta);
             });
           }
         });
       });
       return pasos;
     };
-    // la foto es lo que más pesa: si con la letra normal no le quedan al menos 340 px de alto (400 la de un especial, que
-    // trae varios productos), lo de abajo se achica un poco
-    const sitio = H - CAB - PIE, minFoto = fo ? (fo.recortada ? 340 : 400) : 0;
+    // La foto es lo que más pesa: si con la letra normal no le queda alto suficiente (340 px a la de un producto; 560 a la de
+    // un especial, que trae varios productos y la franja del regalo), lo de abajo se achica un poco.
+    const sitio = H - CAB - PIE, minFoto = fo ? (fo.tipo === "franjas" ? 560 : fo.tipo === "recortada" ? 340 : 400) : 0;
     let pasos = [], alto = 0;
-    for (const k of [1, 0.94, 0.88, 0.82, 0.76]) {
+    for (const k of [1, 0.95, 0.9, 0.85, 0.8, 0.75]) {
       pasos = componer(k); alto = pasos.reduce((n, q) => n + q.alto, 0);
       if (sitio - alto >= minFoto) break;
     }
     x.fillStyle = "#fff"; x.fillRect(0, 0, W, H);
     x.fillStyle = C.tinta; x.fillRect(0, 0, W, CAB);
-    txt("RENA WARE", M, 59, F(800, 34), "#fff", { esp: 4 });
-    txt(m.fecha, W - M, 58, F(600, 27), "#cbd5e1", { der: true });
+    txt("RENA WARE", M, quien ? 50 : 59, F(800, 34), "#fff", { esp: 4 });
+    txt(m.fecha, W - M, quien ? 49 : 58, F(600, 27), "#cbd5e1", { der: true });
+    if (quien) { let ta = 29; while (ta > 20 && mide(quien, F(700, ta)) > AN) ta -= 1; txt(quien, M, 91, F(700, ta), "#e2e8f0"); }
     const libre = sitio - alto;
     const pintar = (y) => pasos.forEach((q) => { q.pinta(y); y += q.alto; });
     if (libre < 0) {   // no debería pasar: si el contenido no entra ni con la letra más chica, se encoge entero
       const f = sitio / alto;
       x.save(); x.translate(W * (1 - f) / 2, CAB); x.scale(f, f); pintar(0); x.restore();
     } else if (fo && libre >= 150) {
-      if (fo.fondo) { x.fillStyle = fo.fondo; x.fillRect(0, CAB, W, libre); }   // el fondo del especial, de lado a lado
-      const padX = fo.recortada ? 30 : fo.fondo ? 0 : 22, padY = fo.recortada ? 30 : fo.fondo ? 12 : 22;
-      const e = Math.min((W - 2 * padX) / fo.sw, (libre - 2 * padY) / fo.sh, 2.6);
-      const w = fo.sw * e, h2 = fo.sh * e, fx = (W - w) / 2, fy = CAB + (libre - h2) / 2;
-      if (fo.recortada || fo.fondo) x.drawImage(foto, fo.sx, fo.sy, fo.sw, fo.sh, fx, fy, w, h2);
-      if (fo.fondo && fo.sinArriba) {
+      if (fo.tipo === "franjas") {
+        x.fillStyle = fo.fondo; x.fillRect(0, CAB, W, libre);   // el fondo del especial, de lado a lado
+        let hb = 0;
+        if (fo.regalo) {   // la franja del regalo, abajo y a todo el ancho
+          hb = Math.min(Math.round(W * fo.regalo.sh / fo.regalo.sw), Math.round(libre * 0.36));
+          const wb = hb * fo.regalo.sw / fo.regalo.sh;
+          x.drawImage(foto, fo.regalo.sx, fo.regalo.sy, fo.regalo.sw, fo.regalo.sh, (W - wb) / 2, CAB + libre - hb, wb, hb);
+        }
+        const padX = 24, padY = 14, hp = libre - hb;
+        const e = Math.min((W - 2 * padX) / fo.sw, (hp - 2 * padY) / fo.sh, 2.6);
+        const w = fo.sw * e, h2 = fo.sh * e, fx = (W - w) / 2, fy = CAB + (hp - h2) / 2;
+        x.drawImage(foto, fo.sx, fo.sy, fo.sw, fo.sh, fx, fy, w, h2);
         // Lo que colgaba de la franja de arriba (el adorno con el descuento y su sombra) queda como una manchita suelta en el
         // borde: se borra. Es «suelto» lo que empieza pegado arriba y se acaba enseguida; un producto sigue hacia abajo.
         try {
-          const ix = Math.round(fx), iy = Math.round(fy), iw = Math.round(w), tira = Math.round(h2 * 0.075), tope = Math.round(h2 * 0.045);
+          const ix = Math.round(fx), iy = Math.round(fy), iw = Math.round(w), tira = Math.round(h2 * 0.1), tope = Math.round(h2 * 0.06);
           const im = x.getImageData(ix, iy, iw, tira), p = im.data, c = fo.rgb;
           const esFondo = (k) => Math.abs(p[k] - c[0]) < 9 && Math.abs(p[k + 1] - c[1]) < 9 && Math.abs(p[k + 2] - c[2]) < 9;
           for (let i = 0; i < iw; i++) {
@@ -1559,9 +1615,13 @@
             for (let r = r0; r < r1; r++) { const k = (r * iw + i) * 4; p[k] = c[0]; p[k + 1] = c[1]; p[k + 2] = c[2]; p[k + 3] = 255; }
           }
           x.putImageData(im, ix, iy);
-        } catch (e) {}
+        } catch (e2) {}
+      } else {
+        const pad = fo.tipo === "recortada" ? 26 : 20, e = Math.min((W - 2 * pad) / fo.sw, (libre - 2 * pad) / fo.sh, 2.6);
+        const w = fo.sw * e, h2 = fo.sh * e, fx = (W - w) / 2, fy = CAB + (libre - h2) / 2;
+        if (fo.tipo === "recortada") x.drawImage(foto, fo.sx, fo.sy, fo.sw, fo.sh, fx, fy, w, h2);
+        else { x.save(); caja(fx, fy, w, h2, 22); x.clip(); x.drawImage(foto, fo.sx, fo.sy, fo.sw, fo.sh, fx, fy, w, h2); x.restore(); }
       }
-      else { x.save(); caja(fx, fy, w, h2, 22); x.clip(); x.drawImage(foto, fo.sx, fo.sy, fo.sw, fo.sh, fx, fy, w, h2); x.restore(); }
       x.fillStyle = C.linea; x.fillRect(0, CAB + libre - 2, W, 2);
       pintar(CAB + libre);
     } else pintar(CAB + Math.round(libre / 2));   // sin foto: el contenido va centrado
@@ -1625,7 +1685,7 @@
     const cotEnCredito = !esCat && ps.tab === "credito" && !!ps.eligible && (ps.opciones || []).length > 0;
     const armarCotizacion = () => {
       const fm = formatMoney;
-      const m = { fecha: fechaHoy, nombre: esCat ? product.titulo || product.name : product.name, chip: psAuto ? (esCat ? "Precio Asesor" : "Precio Autocompra") : "Precio Cliente", auto: !!psAuto, bloques: [], regalo: !esCat && product.gift ? String(product.gift) : "",
+      const m = { fecha: fechaHoy, nombre: esCat ? product.titulo || product.name : product.name, chip: psAuto ? (esCat ? "Precio Asesor" : "Precio Autocompra") : "Precio Cliente", auto: !!psAuto, bloques: [], asesor: datosAsesor(), promo: !!(reglasLista && reglasLista.especial),
         codigo: esCat ? (product.esServicio ? [product.catRaw, product.unidad].filter(Boolean).join(" \xB7 ") : "Cod. " + product.codigo) : "Cod. " + product.codigo + " - N\xB0 " + product.orden };
       if (esCat) {
         m.bloques.push(psAuto
@@ -1638,6 +1698,8 @@
         m.bloques.push({ tipo: "credito", titulo: "Al cr\xE9dito", nota: mn === mx ? mn + " meses" : "De " + mn + " a " + mx + " meses",
           filas: [{ t: psAuto ? "Tu inicial" : "Inicial", v: fm(ps.inicialCredito) }],
           cuotas: ops.map((o) => ({ t: o.meses + " cuotas de", v: fm(o.cuota), antes: psAuto && o.cuotaCliente ? fm(o.cuotaCliente) : "" })) });
+        // lo que se ahorra por ser autocompra, en el plazo que está elegido en la ficha (el mismo «Total ahorro» que se ve ahí)
+        if (psAuto && ps.creditDesc > 0) m.ahorro = { t: "Ahorro en " + ps.selectedTerm + " cuotas", v: fm(ps.creditDesc) };
       } else {
         const base = psAuto ? autoPrice : product.cashPrice;
         const filas = [];
@@ -2474,6 +2536,8 @@
           --blue:#2563eb;--blueD:#1d4ed8;--blueL:#eef4ff;--blueB:#c7d7fe;
           --indigo:#2563eb;--indigoL:#eef4ff;--indigoD:#1e3a8a; /* ya no hay índigo: es el mismo azul */
           --amber:#b45309;--amberD:#92400e;--amberL:#fff7ed;--amberB:#fed7aa;--marca:#fbbf24;--esp:#c2410c;--espT:#7c2d12;--espL:#ffedd5;--espM:#fed7aa;--espB:#fb923c;
+          --nav:#14532d;--navL:#1b6b45;--navOro:#d4a72c;--navOroL:#fde68a;--navRojo:#c81e1e;--navRojoD:#b91c1c;
+          --com:#1e5aa8;--comD:#1e4d8f;--comAma:#fde68a;--comAmaL:#fffbea;--comRojo:#e11d2a;
           --green:#047857;--greenL:#ecfdf5;--greenB:#a7f3d0;
           --red:#dc2626;--redL:#fef2f2;
           --r:16px;--rs:10px;--shadow:0 1px 2px rgba(15,23,42,.04),0 8px 24px rgba(15,23,42,.06)}
@@ -3261,6 +3325,25 @@
         .act-dia{flex-shrink:0;max-width:66%;text-align:right;font-size:12.5px;font-weight:600;line-height:1.35;color:#334155}
         .act-hora{flex-shrink:0;font-size:12px;font-weight:600;color:var(--muted);white-space:nowrap}
         .sim-name small{font-size:12px;font-weight:500;color:var(--muted)}
+        /* ===== Ajustes del 21/11/2026 (los pidió Nelson) ===== */
+        /* Menú: cada lista de especiales con sus colores. Navidad Mágica, verde con rojo y dorado, como sus fotos; Compartir,
+           los de sus volantes (azul, rojo y amarillo). Una lista nueva sale en naranja hasta que se le pongan los suyos. */
+        .lista-btn.esp.lst-navidad-magica{position:relative;overflow:hidden;background:linear-gradient(180deg,var(--navL) 0%,var(--nav) 100%);border:1.5px solid var(--navOro);color:#fff;box-shadow:0 2px 8px rgba(20,83,45,.35)}
+        .lista-btn.esp.lst-navidad-magica:hover{border-color:var(--navOroL);color:#fff}
+        .lista-btn.esp.lst-navidad-magica::before{content:"";position:absolute;inset:0;pointer-events:none;background-image:radial-gradient(circle at 5% 17%,rgba(255,255,255,.7) 0 1.4px,transparent 1.9px),radial-gradient(circle at 95% 21%,rgba(255,255,255,.6) 0 1.5px,transparent 2px),radial-gradient(circle at 3.5% 58%,rgba(255,255,255,.45) 0 1.1px,transparent 1.6px),radial-gradient(circle at 96.5% 63%,rgba(255,255,255,.5) 0 1.2px,transparent 1.7px),radial-gradient(circle at 8% 90%,rgba(255,255,255,.55) 0 1.3px,transparent 1.8px),radial-gradient(circle at 91% 88%,rgba(255,255,255,.6) 0 1.4px,transparent 1.9px)} /* copos de nieve en los bordes */
+        .lista-btn.esp.lst-navidad-magica .lista-nom,.lista-btn.esp.lst-navidad-magica .lista-esp{position:relative}
+        .lista-btn.esp.lst-navidad-magica .lista-esp{color:var(--navOroL)}
+        .lista-btn.esp.lst-navidad-magica .lista-esp b{background:var(--navRojo);color:#fff}
+        .lista-btn.esp.lst-navidad-magica.on{background:linear-gradient(180deg,#d42a2a 0%,var(--navRojoD) 100%);border-color:var(--navOroL);box-shadow:0 6px 16px rgba(185,28,28,.4)}
+        .lista-btn.esp.lst-navidad-magica.on .lista-esp{color:#fee2e2}
+        .lista-btn.esp.lst-navidad-magica.on .lista-esp b{background:#fff;color:var(--navRojoD)}
+        .lista-btn.esp.lst-compartir{background:linear-gradient(180deg,var(--comAmaL) 0%,var(--comAma) 100%);border:1.5px solid var(--com);color:var(--comD);box-shadow:0 2px 8px rgba(30,90,168,.22)}
+        .lista-btn.esp.lst-compartir:hover{border-color:var(--comD);color:var(--comD)}
+        .lista-btn.esp.lst-compartir .lista-esp{color:var(--comD)}
+        .lista-btn.esp.lst-compartir .lista-esp b{background:var(--comRojo);color:#fff}
+        .lista-btn.esp.lst-compartir.on{background:var(--com);border-color:var(--com);color:#fff;box-shadow:0 6px 16px rgba(30,90,168,.36)}
+        .lista-btn.esp.lst-compartir.on .lista-esp{color:var(--comAma)}
+        .lista-btn.esp.lst-compartir.on .lista-esp b{background:var(--comAma);color:#7f1d1d}
       `;
   (function () {
     try {
@@ -3295,6 +3378,7 @@
     const [selectedId, setSelectedId] = useState(null);
     // Vista completa (Tienda en L\xEDnea, simulador de puntos y buscador maestro): solo quien la base marca. Los dem\xE1s ven Lista General, especiales, Repuestos y Servicios.
     const completa = !!(sesion && sesion.completa);
+    sesionQuien = sesion;
     const catalogo = useMemo(() => completa ? catalogoTodo : Object.assign({}, catalogoTodo, {
       listas: (catalogoTodo.listas || []).filter((l) => LISTAS_VISTA_COMPLETA.indexOf(l.key) < 0),
       productos: (catalogoTodo.productos || []).filter((p) => LISTAS_VISTA_COMPLETA.indexOf(p.lista) < 0)
@@ -3660,7 +3744,7 @@
       };
       return [
         { titulo: "Elige la lista", sel: [".lista-switch"], antes: alInicio,
-          texto: "Toca una lista para ver sus precios. «" + nombreDe(gen) + "» tiene todos los productos." + (promo ? " Las de color naranja son especiales y dicen hasta qué día valen." : "") },
+          texto: "Toca una lista para ver sus precios. «" + nombreDe(gen) + "» tiene todos los productos." + (promo ? " Las que dicen «ESPECIAL» son promociones, con sus colores, y dicen hasta qué día valen." : "") },
         { titulo: "Busca un producto", sel: [".search-bar", ".nav-tabs"], antes: alInicio,
           texto: "Escribe el nombre, el código o el número del producto. Con los botones de abajo ves solo un tipo de producto." },
         demo && { titulo: "Abre un producto", sel: [".tile" + pid(demo)], antes: alInicio,
@@ -3684,7 +3768,7 @@
         demo && { titulo: "Comparte la cotización", sel: [".modal-box .quote-actions"], antes: async () => { await conFicha(); await tocar(".modal-box .mode-tab", 0); },
           texto: "Arma una imagen grande con lo que estás viendo, lista para mandar por WhatsApp: el precio al contado o, si tocaste «Crédito», la inicial y todas las cuotas." },
         promoProd && { titulo: "Las promociones", sel: [".tile" + pid(promoProd)], antes: () => irA(promo.key),
-          texto: "Las promociones vigentes tienen su lista, en naranja: «" + nombreDe(promo.key) + "»" + (promo.hasta ? ", hasta el " + diaMesCorto(promo.hasta) : "") + ". Cada especial trae sus productos y su regalo." },
+          texto: "Las promociones vigentes tienen su lista, la que dice «ESPECIAL»: «" + nombreDe(promo.key) + "»" + (promo.hasta ? ", hasta el " + diaMesCorto(promo.hasta) : "") + ". Cada especial trae sus productos y su regalo." },
         promoProd && { titulo: "Una promoción por dentro", sel: [".modal-box .gift-row", ".modal-box .mode-tabs", ".modal-box .price-block"], requiere: ".modal-box .price-block",
           antes: async () => { if (abierta !== promoProd.id) await irA(promo.key); await abrirFicha(promoProd); await tocar(".modal-box .mode-tab", 0); await tocar(".modal-box .tab-bar .tab-btn", 0); return { regalo: !!document.querySelector(".modal-box .gift-row") }; },
           texto: (d) => (d && d.regalo ? "Su ficha dice el regalo, y se" : "Se") + " cotiza igual que la Lista General: " + formas(promo) + "." },
@@ -3716,7 +3800,7 @@
     };
     if (verificando) return h("div", { className: "login-espera" }, "Un momento\u2026");
     if (!sesion && !adminOpen) return h(Ingreso, { onEntrar: (d) => { sesionTok = d.token; setSesion(d); } });
-    return h("div", { className: "app" }, h("header", { className: "header" }, h("div", { className: "header-in" }, h("h1", { className: "header-t", onClick: irArriba }, "Precios y Promociones"), h("div", { className: "header-right" }, bonoActivoLista.activo && !(listaActual && listaActual.sinPuntos) && h("div", { className: "bonus-pill", title: (bonoInfo.semana ? `${bonoInfo.semana}% por ser primera semana del per\xEDodo` : "Puntaje adicional vigente") + (bonoActivoLista.extra ? ` + ${bonoActivoLista.extra}% de esta lista` : "") }, h(ClockSvg, null), h("span", null, "+", bonoActivoLista.porcentaje, "%")), sesion && h("div", { className: "cuenta" }, h("button", { className: "header-cuenta", onClick: () => setCuentaOpen(!cuentaOpen), "aria-label": "Tu sesi\xF3n", "aria-expanded": cuentaOpen ? "true" : "false" }, h(CuentaSvg, null)), cuentaOpen && h("div", { className: "cuenta-fondo", onClick: () => setCuentaOpen(false) }), cuentaOpen && h("div", { className: "cuenta-menu", role: "dialog", "aria-label": "Tu sesi\xF3n" }, h("div", { className: "cuenta-nom" }, sesion.nombre || "Tu sesi\xF3n"), h("p", { className: "cuenta-txt" }, "Este equipo te recuerda: no tienes que escribir tu DNI cada vez."), h("button", { className: "cuenta-tour", onClick: () => abrirTour("menu") }, h(AyudaSvg, null), "Ver tutorial"), h("button", { className: "cuenta-salir", onClick: salir }, "Cerrar sesi\xF3n")))))), h("main", { className: "main" }, h("div", { className: "nav-top", ref: navTopRef }, h("div", { className: "nav-top-fila" }, h("button", { type: "button", className: "tour-ver", onClick: () => abrirTour("boton") }, h(AyudaSvg, null), "Ver tutorial"), listas.length > 1 && listaActual && listaActual.actualizada && h("div", { className: "lista-fecha" }, "Actualizada al ", new Date(listaActual.actualizada).toLocaleDateString("es-PE", { day: "2-digit", month: "short", year: "numeric", timeZone: "America/Lima" })))), h("div", { className: "menu-fijo", ref: menuRef }, h("div", { className: "lista-switch", style: { "--nd": listas.length <= 6 ? listas.length : Math.ceil(listas.length / 2) } }, listas.map((l, i) => h("button", { key: l.key, className: `lista-btn ${l.especial ? "esp " : ""}${activeLista === l.key ? "on" : ""}`, style: { "--sp": repartoListas(listas.length)[i] }, onClick: () => {
+    return h("div", { className: "app" }, h("header", { className: "header" }, h("div", { className: "header-in" }, h("h1", { className: "header-t", onClick: irArriba }, "Precios y Promociones"), h("div", { className: "header-right" }, bonoActivoLista.activo && !(listaActual && listaActual.sinPuntos) && h("div", { className: "bonus-pill", title: (bonoInfo.semana ? `${bonoInfo.semana}% por ser primera semana del per\xEDodo` : "Puntaje adicional vigente") + (bonoActivoLista.extra ? ` + ${bonoActivoLista.extra}% de esta lista` : "") }, h(ClockSvg, null), h("span", null, "+", bonoActivoLista.porcentaje, "%")), sesion && h("div", { className: "cuenta" }, h("button", { className: "header-cuenta", onClick: () => setCuentaOpen(!cuentaOpen), "aria-label": "Tu sesi\xF3n", "aria-expanded": cuentaOpen ? "true" : "false" }, h(CuentaSvg, null)), cuentaOpen && h("div", { className: "cuenta-fondo", onClick: () => setCuentaOpen(false) }), cuentaOpen && h("div", { className: "cuenta-menu", role: "dialog", "aria-label": "Tu sesi\xF3n" }, h("div", { className: "cuenta-nom" }, sesion.nombre || "Tu sesi\xF3n"), h("p", { className: "cuenta-txt" }, "Este equipo te recuerda: no tienes que escribir tu DNI cada vez."), h("button", { className: "cuenta-tour", onClick: () => abrirTour("menu") }, h(AyudaSvg, null), "Ver tutorial"), h("button", { className: "cuenta-salir", onClick: salir }, "Cerrar sesi\xF3n")))))), h("main", { className: "main" }, h("div", { className: "nav-top", ref: navTopRef }, h("div", { className: "nav-top-fila" }, h("button", { type: "button", className: "tour-ver", onClick: () => abrirTour("boton") }, h(AyudaSvg, null), "Ver tutorial"), listas.length > 1 && listaActual && listaActual.actualizada && h("div", { className: "lista-fecha" }, "Actualizada al ", new Date(listaActual.actualizada).toLocaleDateString("es-PE", { day: "2-digit", month: "short", year: "numeric", timeZone: "America/Lima" })))), h("div", { className: "menu-fijo", ref: menuRef }, h("div", { className: "lista-switch", style: { "--nd": listas.length <= 6 ? listas.length : Math.ceil(listas.length / 2) } }, listas.map((l, i) => h("button", { key: l.key, className: `lista-btn ${l.especial ? "esp lst-" + l.key + " " : ""}${activeLista === l.key ? "on" : ""}`, style: { "--sp": repartoListas(listas.length)[i] }, onClick: () => {
       setActiveLista(l.key);
       setActiveCat(TODAS_KEY);
       setSimOpen(false);

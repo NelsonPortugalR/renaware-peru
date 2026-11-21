@@ -23,7 +23,7 @@ const CLAVE_ADMIN = "clave-de-prueba";
 /* supabase-js de mentira: lo justo que usa la página. Las funciones que cambian algo exigen sesión de admin. */
 const SB_FALSO = `
 window.supabase = { createClient: function () {
-  var M = window.__MOCK, S = window.__SIM = window.__SIM || { rpc: [], subidas: [], config: null, sesiones: { "tok-asesor": { nombre: "Nelson", celular: "987654321", completa: M.completa !== false } }, admin: {} };
+  var M = window.__MOCK, S = window.__SIM = window.__SIM || { rpc: [], subidas: [], config: null, sesiones: { "tok-asesor": Object.assign({ nombre: "Nelson", celular: "987654321", completa: M.completa !== false }, M.__quien || {}) }, admin: {} };
   function R(d) { return Promise.resolve({ data: d, error: null }); }
   function E(m) { return Promise.resolve({ data: null, error: { message: m } }); }
   function esAdmin(t) { return !!(t && S.admin[t]); }
@@ -67,6 +67,7 @@ window.supabase = { createClient: function () {
    o.fotos: carpetas donde buscar las fotos que la página pide al Storage ·
    o.token: la sesión guardada en el equipo (por defecto, la de Nelson) · o.recordada: lo que el equipo recuerda de esa sesión ·
    o.fallaValida: cuántas veces falla la validación de la sesión, como sin red (-1: siempre) ·
+   o.quien: { nombre, celular } de quien tiene la sesión (la llave «celular» puede ser un DNI de 8 dígitos) ·
    o.ua: el navegador que dice ser (para probar lo que cambia en iPhone) ·
    o.video: { bytes, demora, falla } del video de mentira que sirve el Storage */
 async function abrir(o) {
@@ -90,7 +91,7 @@ async function abrir(o) {
       }
       sessionStorage.setItem("sim_listo", "1");
     } catch (e) {} },
-    Object.assign({}, mock, { __sesion: o.sinSesion ? false : true, __token: o.token || "", __recordada: o.recordada || null, __fallaValida: o.fallaValida || 0 }));
+    Object.assign({}, mock, { __sesion: o.sinSesion ? false : true, __token: o.token || "", __recordada: o.recordada || null, __fallaValida: o.fallaValida || 0, __quien: o.quien || null }));
   if (o.reloj) await ctx.addInitScript((t) => { const D = Date, d0 = D.now(); const corr = t - d0;
     window.Date = class extends D { constructor(...a) { if (a.length) super(...a); else super(D.now() + corr); } static now() { return D.now() + corr; } }; }, Date.parse(o.reloj));
   await ctx.route("**/*", async (ruta) => {
