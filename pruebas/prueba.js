@@ -6,7 +6,7 @@
    Servicios (soldadura, limpieza, pulido en dos variantes, cocina), fichas,
    cotización, buscador, panel de administración, el comportamiento de la
    parte alta (listas, barra pegada, salto al buscar), el tutorial, la inicial
-   y el crédito, la cotización (contado y crédito, compartir y copiar), el envío
+   y el crédito, la cotización (lo que se está viendo, en una imagen grande), el envío
    del video, la sesión que se queda y el registro de uso.
    Solo una parte:  SOLO=inicial,cotizacion node pruebas/prueba.js
    Uso:  node pruebas/prueba.js [carpeta-de-capturas]
@@ -156,7 +156,7 @@ async function ganancia() {
   igual(await s.textos(".tab-btn"), ["Contado", "Crédito"], "contado y crédito");
   await p.locator(".tab-btn", { hasText: "Crédito" }).click(); await p.waitForTimeout(200);
   ok(await s.cuenta(".inst-btn") >= 3, "con sus cuotas");
-  const cg = await s.cot((m) => /N° 1$/.test(m.codigo));
+  const cg = await s.cot((m) => /000158/.test(m.codigo));
   igual(cg && cg.codigo, "Cod. 000158 - N° 1", "la cotización conserva código y número");
   await s.cerrarFicha();
   await s.lista("Tienda en Línea");
@@ -688,9 +688,9 @@ async function tutorial() {
   igual(await s.texto(".modal-box .mode-tab.on"), "Precio Autocompra", "sigue en Precio Autocompra");
   await s.foto("tutorial-10-empiece-ya");
   t = await sig(t);
-  await revisar(t, ".modal-box .quote-actions", "resalta Compartir cotización y Copiar");
-  ok(dentroDe((await s.cajas(".modal-box .copy-quote-btn"))[0], t.foco, 3) && /todas las cuotas/.test(t.texto) && /Copiar/.test(t.texto), "explica que la imagen trae contado y cuotas, y para qué sirve Copiar → " + t.texto);
-  ok(t.carta.aba <= t.foco.y, "la tarjeta va encima de los botones, que están abajo");
+  await revisar(t, ".modal-box .quote-actions", "resalta Compartir cotización");
+  ok(/WhatsApp/.test(t.texto) && /todas las cuotas/.test(t.texto) && !/Copiar/.test(t.texto), "explica que la imagen lleva lo que se está viendo: el contado, o el crédito con todas las cuotas → " + t.texto);
+  ok(t.carta.aba <= t.foco.y, "la tarjeta va encima del botón, que está abajo");
   t = await sig(t);
   igual(t.titulo, "Las promociones", "luego pasa por una promoción");
   ok(await s.cuenta(".modal-box") === 0 && /Compartir/.test(await s.texto(".lista-btn.on.esp")), "con la lista especial vigente abierta");
@@ -826,9 +826,9 @@ async function inicial() {
   await abrir(0);
   igual(await valor(), 963, "la ficha abre con la inicial mínima: 10 % de S/ 9,629");
   await s.pestana("Autocompra");
-  igual(await valor(), 861, "en autocompra, mientras no se cambie, es el 10 % de tu precio (S/ 8,606)");
+  igual(await valor(), 963, "en autocompra la inicial es la misma: el 10 % del precio de cliente (no se recalcula con el precio de autocompra)");
   await s.pestana("Cliente");
-  igual(await valor(), 963, "y al volver a Precio Cliente, otra vez el 10 % del precio de cliente");
+  igual(await valor(), 963, "y al volver a Precio Cliente sigue igual");
   igual(await s.texto(".modal-box .cbox-ayuda"), "Toca el monto para cambiarlo", "debajo dice que la inicial se puede cambiar");
   igual(await s.cuenta(".modal-box .cbox-ok"), 0, "sin botón OK mientras no se toca");
   await campo().click(); await p.waitForTimeout(260);
@@ -917,105 +917,126 @@ async function inicial() {
   await c.fin("inicial en celular chico");
 }
 
-/* ------------------------------------------------------------------ 12. la cotización: contado y crédito siempre, versión de autocompra, compartir y copiar */
+/* ------------------------------------------------------------------ 12. la cotización: lo que se está viendo, en una imagen grande y siempre del mismo tamaño */
+/* La hoja de compartir del teléfono, de mentira: anota el archivo que recibe, su tamaño y cuánta «tinta» hay en la zona de la foto */
+const hojaDeCompartir = (pagina) => pagina.evaluate(() => {
+  window.__compartido = []; window.__falla = [];
+  Object.defineProperty(navigator, "canShare", { configurable: true, value: () => true });
+  Object.defineProperty(navigator, "share", { configurable: true, value: async (d) => {
+    const f = window.__falla.shift();
+    if (f) { const e = new Error(f); e.name = f; throw e; }
+    const a = (d.files || [])[0], b = a ? await createImageBitmap(a) : null;
+    let tinta = 0;
+    if (b) {
+      const c = document.createElement("canvas"); c.width = b.width; c.height = 250;
+      const g = c.getContext("2d"); g.drawImage(b, 0, -150);
+      const px = g.getImageData(0, 0, c.width, 250).data;
+      let n = 0; for (let i = 0; i < px.length; i += 4) if (px[i] < 235 || px[i + 1] < 235 || px[i + 2] < 235) n++;
+      tinta = Math.round(n / (px.length / 4) * 1000) / 1000;
+    }
+    window.__compartido.push({ nombre: a ? a.name : "", tipo: a ? a.type : "", bytes: a ? a.size : 0, ancho: b ? b.width : 0, alto: b ? b.height : 0, cuantos: (d.files || []).length, tinta });
+  } });
+});
 async function cotizacion() {
-  titulo("Cotización para el cliente: contado y todas las cuotas");
+  titulo("Cotización: lleva lo que se está viendo (contado o crédito)");
   const s = await sesion({ movil: true, cambiar: sinBono });
   const p = s.pagina;
-  await p.evaluate(() => {   // la hoja de compartir y el portapapeles del teléfono, de mentira
-    window.__compartido = []; window.__copiado = []; window.__falla = [];
-    Object.defineProperty(navigator, "canShare", { configurable: true, value: () => true });
-    Object.defineProperty(navigator, "share", { configurable: true, value: async (d) => {
-      const f = window.__falla.shift();
-      if (f) { const e = new Error(f); e.name = f; throw e; }
-      const a = (d.files || [])[0], b = a ? await createImageBitmap(a) : null;
-      window.__compartido.push({ nombre: a ? a.name : "", tipo: a ? a.type : "", bytes: a ? a.size : 0, ancho: b ? b.width : 0, alto: b ? b.height : 0, cuantos: (d.files || []).length });
-    } });
-    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { write: async (items) => {
-      const r = [];
-      for (const it of items) { const b = await it.getType(it.types[0]); const bm = await createImageBitmap(b); r.push({ tipos: Array.from(it.types), bytes: b.size, ancho: bm.width }); }
-      window.__copiado.push(r);
-    } } });
-  });
+  await hojaDeCompartir(p);
+  const pestana = async (t) => { await p.locator(".modal-box .tab-btn", { hasText: t }).click(); await p.waitForTimeout(250); };
+  const compartir = async () => { await p.locator(".modal-box .share-quote-btn").click(); await p.waitForTimeout(700); return p.evaluate(() => window.__compartido); };
+  const esContado = (x) => x.bloques.length === 1 && x.bloques[0].tipo === "contado";
+  const esCredito = (x) => x.bloques.length === 1 && x.bloques[0].tipo === "credito";
   await p.locator(".tile .tile-btn").first().click(); await p.waitForTimeout(450);
   const todas = [3, 6, 9, 12, 15, 18];
-  let m = await s.cot((x) => x.chip === "Precio Cliente" && x.bloques.length === 2);
+  let m = await s.cot((x) => x.chip === "Precio Cliente" && esContado(x));
   igual(m && [m.nombre, m.codigo, m.chip, m.auto, m.puntos], ["Juego Gourmet serie Zylstra", "Cod. 000158 - N° 1", "Precio Cliente", false, null], "dice el producto, su código y que es el precio de cliente; sin puntos");
-  igual(m && m.bloques.map((b) => b.titulo), ["Al contado", "Al crédito"], "trae el contado y el crédito, aunque en la ficha esté tocado Contado");
-  igual(m && [m.bloques[0].total, m.bloques[0].pie], [{ t: "Precio contado", v: "S/ 9,629" }, [{ t: "Inicial", v: "S/ 963" }, { t: "Saldo contra entrega", v: "S/ 8,666" }]], "al contado: precio, inicial y saldo contra entrega");
-  igual(m && [m.bloques[1].nota, m.bloques[1].filas, m.bloques[1].cuotas], ["De 3 a 18 meses", [{ t: "Inicial", v: "S/ 963" }], todas.map((n) => ({ t: n + " cuotas de", v: soles(cuotaDe(8666, n)), antes: "" }))], "al crédito: la inicial y todos los plazos disponibles, de 3 a 18 meses");
-  const enContado = JSON.stringify(m);
-  await p.locator(".modal-box .tab-btn", { hasText: "Crédito" }).click(); await p.waitForTimeout(900);
-  igual(JSON.stringify(await s.cot()), enContado, "y es la misma si en la ficha está tocado Crédito");
+  igual(m && m.bloques.map((b) => b.titulo), ["Al contado"], "con Contado tocado lleva solo el contado");
+  igual(m && [m.bloques[0].total, m.bloques[0].pie], [{ t: "Precio contado", v: "S/ 9,629" }, [{ t: "Inicial", v: "S/ 963" }, { t: "Saldo contra entrega", v: "S/ 8,666" }]], "con el precio, la inicial y el saldo contra entrega");
+  await pestana("Crédito");
+  m = await s.cot(esCredito);
+  igual(m && m.bloques.map((b) => b.titulo), ["Al crédito"], "con Crédito tocado lleva solo el crédito");
+  igual(m && [m.bloques[0].nota, m.bloques[0].filas, m.bloques[0].cuotas], ["De 3 a 18 meses", [{ t: "Inicial", v: "S/ 963" }], todas.map((n) => ({ t: n + " cuotas de", v: soles(cuotaDe(8666, n)), antes: "" }))], "con la inicial y todos los plazos disponibles, de 3 a 18 meses");
   igual(await s.cuenta(".modal-box .qc-card") + await s.cuenta(".qc-holder"), 0, "la imagen se dibuja al momento: ya no hay una tarjeta escondida en la página");
-
   await p.locator(".modal-box .cbox.editable input").click(); await p.waitForTimeout(260);
   await p.keyboard.type("2000"); await p.locator(".modal-box .cbox-ok").click();
-  m = await s.cot((x) => x.bloques[1] && x.bloques[1].filas[0].v === "S/ 2,000");
-  igual(m && [m.bloques[0].pie.map((f) => f.v), m.bloques[1].cuotas.map((c) => c.v)], [["S/ 2,000", "S/ 7,629"], todas.map((n) => soles(cuotaDe(7629, n)))], "si cambia la inicial, la cotización cambia: contado y cuotas con S/ 2,000");
+  m = await s.cot((x) => esCredito(x) && x.bloques[0].filas[0].v === "S/ 2,000");
+  igual(m && m.bloques[0].cuotas.map((c) => c.v), todas.map((n) => soles(cuotaDe(7629, n))), "si cambia la inicial, cambian las cuotas de la cotización");
+  await pestana("Contado");
+  m = await s.cot((x) => esContado(x) && x.bloques[0].pie.length === 2 && x.bloques[0].pie[0].v === "S/ 2,000");
+  igual(m && m.bloques[0].pie.map((f) => f.v), ["S/ 2,000", "S/ 7,629"], "y el contado sale con esa misma inicial y su saldo");
 
-  titulo("Compartir y copiar la cotización");
-  igual(await s.textos(".modal-box .quote-actions button"), ["Compartir cotización", "Copiar"], "abajo de la ficha: Compartir cotización y Copiar");
-  await p.locator(".modal-box .share-quote-btn").click(); await p.waitForTimeout(700);
-  let c = await p.evaluate(() => window.__compartido);
-  igual(c.map((x) => [x.cuantos, x.nombre, x.tipo, x.ancho]), [[1, "cotizacion-000158-cliente-ini2000.png", "image/png", 1040]], "compartir manda una sola imagen PNG de 1040 px de ancho");
-  ok(c[0] && c[0].alto > 900 && c[0].bytes > 30000, "con el contado y las cuotas → " + JSON.stringify(c[0]));
-  const altoSinFoto = c[0] ? c[0].alto : 0;
+  titulo("Compartir la cotización");
+  igual(await s.textos(".modal-box .quote-actions button"), ["Compartir cotización"], "abajo de la ficha, un solo botón: Compartir cotización");
+  let c = await compartir();
+  igual(c.map((x) => [x.cuantos, x.nombre, x.tipo, x.ancho, x.alto]), [[1, "cotizacion-000158-cliente-contado-ini2000.png", "image/png", 1080, 1350]], "manda una sola imagen PNG de 1080 × 1350: el formato vertical que WhatsApp muestra entero");
   igual(await s.cuenta(".modal-box .cap-err") + await s.cuenta(".modal-box .cap-ok"), 0, "sin avisos cuando sale bien");
-  await p.locator(".modal-box .copy-quote-btn").click(); await p.waitForTimeout(700);
-  const cp = await p.evaluate(() => window.__copiado);
-  igual(cp.map((x) => x.map((y) => [y.tipos, y.ancho])), [[[["image/png"], 1040]]], "Copiar pone UNA imagen en el portapapeles (el «Copiar» del iPhone pegaba dos)");
-  igual(await s.texto(".modal-box .cap-ok"), "Imagen copiada. Ahora pégala en tu chat.", "y dice qué hacer después");
+  await pestana("Crédito"); await s.cot(esCredito);
+  c = await compartir();
+  igual(c.slice(1).map((x) => [x.nombre, x.ancho, x.alto]), [["cotizacion-000158-cliente-credito-ini2000.png", 1080, 1350]], "la de crédito sale aparte, con su nombre y del mismo tamaño");
   // el celular a veces se niega a compartir si pasó mucho rato desde el toque: la imagen queda lista y se envía con otro toque
   await p.evaluate(() => { window.__falla = ["NotAllowedError"]; });
   await p.locator(".modal-box .share-quote-btn").click(); await p.waitForTimeout(600);
   igual([await s.texto(".modal-box .share-quote-btn"), await s.texto(".modal-box .cap-ok"), await s.cuenta(".modal-box .cap-err")], ["Imagen lista: toca para enviar", "La imagen ya está lista. Toca otra vez para enviarla.", 0], "si el celular no deja compartir en ese toque, no da error: pide otro toque");
   ok(/lista/.test(await p.locator(".modal-box .share-quote-btn").getAttribute("class")), "con el botón en verde");
-  await p.locator(".modal-box .share-quote-btn").click(); await p.waitForTimeout(600);
-  c = await p.evaluate(() => window.__compartido);
-  igual([c.length, c[1] && c[1].nombre, await s.texto(".modal-box .share-quote-btn"), await s.cuenta(".modal-box .cap-ok")], [2, "cotizacion-000158-cliente-ini2000.png", "Compartir cotización", 0], "y con el segundo toque sale");
+  c = await compartir();
+  igual([c.length, c[2] && c[2].nombre, await s.texto(".modal-box .share-quote-btn"), await s.cuenta(".modal-box .cap-ok")], [3, "cotizacion-000158-cliente-credito-ini2000.png", "Compartir cotización", 0], "y con el segundo toque sale");
   await p.evaluate(() => { window.__falla = ["DataError"]; });
   await p.locator(".modal-box .share-quote-btn").click(); await p.waitForTimeout(600);
-  igual(await s.texto(".modal-box .cap-err"), "Tu celular no dejó compartir la imagen. Prueba con Copiar.", "si de verdad falla, lo dice claro y ofrece Copiar");
+  igual(await s.texto(".modal-box .cap-err"), "Tu celular no dejó compartir la imagen. Inténtalo de nuevo.", "si de verdad falla, lo dice claro");
   await p.evaluate(() => { window.__falla = ["AbortError"]; });
   await p.locator(".modal-box .share-quote-btn").click(); await p.waitForTimeout(600);
   igual(await s.cuenta(".modal-box .cap-err") + await s.cuenta(".modal-box .cap-ok"), 0, "si la asesora cierra las opciones de compartir, no es un error");
-  igual((await s.eventos("cotizacion")).map((e) => [e.via, e.resultado, e.codigo, e.modo]), [["compartir", "ok", "000158", "cliente"], ["copiar", "ok", "000158", "cliente"], ["compartir", "otro_toque", "000158", "cliente"], ["compartir", "ok", "000158", "cliente"], ["compartir", "error", "000158", "cliente"], ["compartir", "cancelado", "000158", "cliente"]], "cada intento queda en el registro de uso, con su resultado");
+  igual((await s.eventos("cotizacion")).map((e) => [e.via, e.resultado, e.codigo, e.modo]), [["compartir", "ok", "000158", "cliente"], ["compartir", "ok", "000158", "cliente"], ["compartir", "otro_toque", "000158", "cliente"], ["compartir", "ok", "000158", "cliente"], ["compartir", "error", "000158", "cliente"], ["compartir", "cancelado", "000158", "cliente"]], "cada intento queda en el registro de uso, con su resultado");
   await s.foto("cotizacion-pie");
 
   titulo("Cotización de autocompra");
   await s.pestana("Autocompra");
-  await p.locator(".modal-box .tab-btn", { hasText: "Contado" }).click(); await p.waitForTimeout(250);
+  await pestana("Contado");
   const tuPrecio = num(await s.texto(".modal-box .auto-ticket .tk-total"));
   ok(tuPrecio > 5000 && tuPrecio < 9629, "en la ficha, tu precio de autocompra → " + tuPrecio);
-  m = await s.cot((x) => x.auto);
-  igual(m && [m.chip, m.bloques.map((b) => b.titulo)], ["Precio Autocompra", ["Al contado", "Al crédito"]], "también trae contado y crédito");
-  igual(m && [m.bloques[0].filas.map((f) => f.t), m.bloques[0].filas[0].v, m.bloques[0].total], [["Precio contado", "Menos tu descuento"], "S/ 9,629", { t: "Tu precio (contado)", v: soles(tuPrecio) }], "al contado: el precio, tu descuento y tu precio");
-  igual(m && m.bloques[0].filas[1].v, "- " + soles(9629 - tuPrecio), "con el descuento que corresponde");
-  igual(m && m.bloques[0].pie.map((f) => f.t).concat(m.bloques[1].filas.map((f) => f.t)), ["Tu inicial", "Tu saldo contra entrega", "Tu inicial"], "con tu inicial y tu saldo");
-  const ini = m ? num(m.bloques[1].filas[0].v) : 0;
-  igual(m && m.bloques[1].cuotas, todas.map((n) => ({ t: n + " cuotas de", v: soles(cuotaDe(tuPrecio - ini, n)), antes: soles(cuotaDe(9629 - ini, n)) })), "en cada plazo, la cuota del cliente (tachada) y la tuya");
+  m = await s.cot((x) => x.auto && esContado(x));
+  igual(m && [m.chip, m.bloques.map((b) => b.titulo)], ["Precio Autocompra", ["Al contado"]], "al contado, sola");
+  igual(m && [m.bloques[0].filas.map((f) => f.t), m.bloques[0].filas[0].v, m.bloques[0].filas[1].v, m.bloques[0].total], [["Precio contado", "Menos tu descuento"], "S/ 9,629", "- " + soles(9629 - tuPrecio), { t: "Tu precio (contado)", v: soles(tuPrecio) }], "con el precio, tu descuento y tu precio");
+  igual(m && m.bloques[0].pie, [{ t: "Tu inicial", v: "S/ 2,000" }, { t: "Tu saldo contra entrega", v: soles(tuPrecio - 2000) }], "tu inicial y tu saldo");
   ok(m && m.puntos && /^Esta autocompra te da [\d,]+ pts\.$/.test(m.puntos.t) && /primeras 4 semanas/.test(m.puntos.linea) && !!m.puntos.premio, "y abajo los puntos y el premio → " + JSON.stringify(m && m.puntos));
-  await p.locator(".modal-box .share-quote-btn").click(); await p.waitForTimeout(700);
-  c = await p.evaluate(() => window.__compartido);
-  ok(/^cotizacion-000158-autocompra-ini\d+\.png$/.test(c[c.length - 1].nombre) && c[c.length - 1].alto > altoSinFoto + 100, "sale como otra imagen, con su nombre, y más larga por el descuento y los puntos → " + JSON.stringify(c[c.length - 1]));
+  await pestana("Crédito");
+  m = await s.cot((x) => x.auto && esCredito(x));
+  igual(m && [m.bloques[0].filas, m.bloques[0].cuotas], [[{ t: "Tu inicial", v: "S/ 2,000" }], todas.map((n) => ({ t: n + " cuotas de", v: soles(cuotaDe(tuPrecio - 2000, n)), antes: soles(cuotaDe(7629, n)) }))], "al crédito: tu inicial y, en cada plazo, la cuota del cliente (tachada) y la tuya");
+  ok(m && !!m.puntos, "también con los puntos");
+  c = await compartir();
+  igual([c[c.length - 1].nombre, c[c.length - 1].ancho, c[c.length - 1].alto], ["cotizacion-000158-autocompra-credito-ini2000.png", 1080, 1350], "sale con su nombre y del mismo tamaño, aunque trae más cosas");
   await s.cerrarFicha();
 
-  titulo("Cotización de un especial y de un producto sin crédito");
+  titulo("Un especial, un producto sin crédito y un repuesto: todas del mismo tamaño");
   await s.lista("Compartir");
   await p.locator(".tile .tile-btn").first().click(); await p.waitForTimeout(450);
   const conPromo = await s.cuenta(".modal-box .price-reg") > 0;
-  m = await s.cot((x) => x.chip === "Precio Cliente" && !/000158/.test(x.codigo));
-  igual(m && m.bloques.map((b) => b.tipo), ["contado", "credito"], "el especial también sale con contado y crédito");
-  igual(m && m.bloques[0].filas.map((f) => f.t), conPromo ? ["Precio regular", "Descuento"] : [], conPromo ? "con su precio regular tachado y el descuento" : "sin precio regular, porque no lo tiene");
-  ok(m && m.bloques[1].cuotas.length >= 3 && m.bloques[1].cuotas.every((q) => /^S\/ [\d,]+$/.test(q.v)), "y sus cuotas → " + JSON.stringify(m && m.bloques[1].cuotas.map((q) => q.t + " " + q.v)));
+  m = await s.cot((x) => x.chip === "Precio Cliente" && !/000158/.test(x.codigo) && esContado(x));
+  igual(m && m.bloques[0].filas.map((f) => f.t), conPromo ? ["Precio regular", "Descuento"] : [], conPromo ? "el especial al contado, con su precio regular tachado y el descuento" : "el especial al contado, sin precio regular porque no lo tiene");
+  await pestana("Crédito");
+  m = await s.cot((x) => !/000158/.test(x.codigo) && esCredito(x));
+  ok(m && m.bloques[0].cuotas.length >= 3 && m.bloques[0].cuotas.every((q) => /^S\/ [\d,]+$/.test(q.v)), "y al crédito, con sus cuotas → " + JSON.stringify(m && m.bloques[0].cuotas.map((q) => q.t + " " + q.v)));
+  c = await compartir();
   await s.cerrarFicha();
   await s.lista("Lista General");
   await p.locator(".search-bar input").fill("000096"); await p.waitForTimeout(300);
   await p.locator(".tile .tile-btn").first().click(); await p.waitForTimeout(450);
   const precio = num(await s.texto(".modal-box .price-big"));
   m = await s.cot((x) => /000096/.test(x.codigo));
-  ok(precio < 500 && m && m.bloques.length === 1 && m.bloques[0].pie.length === 0 && m.bloques[0].total.v === soles(precio), "un producto de menos de S/ 500 se paga completo: solo el precio al contado → " + JSON.stringify(m && m.bloques[0].total));
+  ok(precio < 500 && m && esContado(m) && m.bloques[0].pie.length === 0 && m.bloques[0].total.v === soles(precio), "un producto de menos de S/ 500 se paga completo: solo el precio al contado → " + JSON.stringify(m && m.bloques[0].total));
+  c = await compartir();
+  await s.cerrarFicha();
+  await p.locator(".search-clear").click(); await p.waitForTimeout(200);
+  await s.lista("Repuestos");
+  await s.fila("Cód. 30104").click(); await p.waitForTimeout(450);
+  await s.cot((x) => /30104/.test(x.codigo));
+  c = await compartir();
+  await s.pestana("Asesor"); await s.cot((x) => /30104/.test(x.codigo) && x.chip === "Precio Asesor");
+  c = await compartir();
+  igual(c.slice(-4).map((x) => x.nombre.replace(/-ini\d+/, "")), [c[c.length - 4].nombre.replace(/-ini\d+/, ""), "cotizacion-000096-cliente-contado.png", "cotizacion-30104-cliente.png", "cotizacion-30104-asesor.png"], "cada una con su nombre");
+  ok(/^cotizacion-\d+-cliente-credito\.png$/.test(c[c.length - 4].nombre.replace(/-ini\d+/, "")), "la del especial dice que es de crédito → " + c[c.length - 4].nombre);
+  igual(Array.from(new Set(c.map((x) => x.ancho + " × " + x.alto))), ["1080 × 1350"], "todas las cotizaciones miden lo mismo: lista general, especial, sin crédito, repuesto, cliente o autocompra");
+  igual(c[0].tinta, 0, "(en esta prueba los productos no tienen foto: la zona de la foto queda en blanco)");
   await s.cerrarFicha();
   await s.fin("cotización");
 
@@ -1023,15 +1044,11 @@ async function cotizacion() {
   const dirFotos = fs.mkdtempSync(path.join(require("os").tmpdir(), "rw-fotos-"));
   fs.copyFileSync(path.join(RAIZ, "promociones", "eq-olla-presion-8l.webp"), path.join(dirFotos, "000158.webp"));
   const f = await sesion({ movil: true, fotos: [dirFotos], cambiar: sinBono });
-  await f.pagina.evaluate(() => {
-    window.__compartido = [];
-    Object.defineProperty(navigator, "canShare", { configurable: true, value: () => true });
-    Object.defineProperty(navigator, "share", { configurable: true, value: async (d) => { const b = await createImageBitmap(d.files[0]); window.__compartido.push({ ancho: b.width, alto: b.height, bytes: d.files[0].size }); } });
-  });
+  await hojaDeCompartir(f.pagina);
   await f.pagina.locator(".tile .tile-btn").first().click(); await f.pagina.waitForTimeout(1300);
   await f.pagina.locator(".modal-box .share-quote-btn").click(); await f.pagina.waitForTimeout(700);
   const cf = await f.pagina.evaluate(() => window.__compartido);
-  ok(cf.length === 1 && cf[0].ancho === 1040 && cf[0].alto > altoSinFoto + 250, "con la foto arriba, la imagen es más alta → " + JSON.stringify(cf[0]) + " (sin foto, " + altoSinFoto + " px)");
+  ok(cf.length === 1 && cf[0].ancho === 1080 && cf[0].alto === 1350 && cf[0].tinta > 0.05, "con la foto arriba, grande, y del mismo tamaño → " + JSON.stringify(cf[0]));
   await f.fin("cotización con foto");
   fs.rmSync(dirFotos, { recursive: true, force: true });
 }

@@ -75,10 +75,11 @@ desde la página.
 
 ## Inicial y crédito
 
-La inicial abre en el 10 % del precio que se está viendo (cliente o
-autocompra). Se cambia tocando el monto y se confirma con **OK** (o Intro); lo
-que se pone en Contado vale en Crédito y al revés, hasta el tope que deja el
-saldo mínimo por financiar, y vuelve al 10 % al cerrar la ficha. Las reglas
+La inicial abre en el 10 % del precio de cliente y no se recalcula al pasar a
+Autocompra: en autocompra la inicial es el 10 % del precio de cliente. Se
+cambia tocando el monto y se confirma con **OK** (o Intro); lo que se pone en
+Contado vale en Crédito y al revés, hasta el tope que deja el saldo mínimo por
+financiar, y vuelve al 10 % al cerrar la ficha. Las reglas
 vienen de `reglas_credito` (saldo mínimo a financiar, cuota mínima, inicial
 mínima): hay crédito cuando el precio menos la inicial mínima alcanza el saldo
 mínimo; si no, la ficha dice «Solo al contado» y por qué.
@@ -86,12 +87,16 @@ mínimo; si no, la ficha dice «Solo al contado» y por qué.
 ## Cotización
 
 «Compartir cotización» arma una imagen PNG dibujada en un lienzo (sin
-bibliotecas): siempre trae el contado y, si el producto tiene crédito, todos
-los plazos con la inicial puesta; en autocompra, el descuento, la cuota del
-cliente tachada junto a la del asesor y los puntos. La imagen se prepara sola
-apenas cambia algo, para que el celular abra sus opciones en el mismo toque; si
-el celular se niega, queda «Imagen lista: toca para enviar». «Copiar» pone una
-sola imagen en el portapapeles. Los datos de la imagen quedan en
+bibliotecas). **Siempre mide 1080 × 1350** (4:5, el formato vertical que
+WhatsApp muestra entero en el chat), igual para la lista general que para un
+especial, y **lleva lo que se está viendo**: con «Contado», el precio, la
+inicial y el saldo; con «Crédito», la inicial y todas las cuotas. En
+autocompra suma el descuento (o la cuota del cliente tachada junto a la del
+asesor) y los puntos. La letra es grande para que se lea en el chat sin abrir
+la imagen; si el contenido es mucho (autocompra de un especial), se reduce un
+poco antes que achicar la foto. La imagen se prepara sola apenas cambia algo,
+para que el celular abra sus opciones en el mismo toque; si el celular se
+niega, queda «Imagen lista: toca para enviar». Los datos de la imagen quedan en
 `window.__cotizacion` (lo usan las pruebas).
 
 ## Video
