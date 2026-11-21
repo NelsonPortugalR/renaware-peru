@@ -76,7 +76,8 @@ desde la página.
 ## Inicial y crédito
 
 La inicial abre en el 10 % del precio de cliente y no se recalcula al pasar a
-Autocompra: en autocompra la inicial es el 10 % del precio de cliente. Se
+Autocompra: en autocompra la inicial es, y como mínimo, el 10 % del precio de
+cliente (no del precio de autocompra). Se
 cambia tocando el monto y se confirma con **OK** (o Intro); lo que se pone en
 Contado vale en Crédito y al revés, hasta el tope que deja el saldo mínimo por
 financiar, y vuelve al 10 % al cerrar la ficha. Las reglas
@@ -92,9 +93,13 @@ WhatsApp muestra entero en el chat), igual para la lista general que para un
 especial, y **lleva lo que se está viendo**: con «Contado», el precio, la
 inicial y el saldo; con «Crédito», la inicial y todas las cuotas. En
 autocompra suma el descuento (o la cuota del cliente tachada junto a la del
-asesor) y los puntos. La letra es grande para que se lea en el chat sin abrir
-la imagen; si el contenido es mucho (autocompra de un especial), se reduce un
-poco antes que achicar la foto. La imagen se prepara sola apenas cambia algo,
+asesor); no lleva puntos ni premios, para que la foto del producto salga
+grande. La letra es grande para que se lea en el chat sin abrir la imagen; si
+el contenido es mucho, se reduce un poco antes que achicar la foto. A la foto
+de un especial se le quitan sus franjas (la de arriba, con el número y el
+descuento, y la de abajo, con el regalo): el regalo va escrito aparte
+(`productos.regalo`) y el fondo de la foto se extiende de lado a lado, así los
+productos se distinguen. La imagen se prepara sola apenas cambia algo,
 para que el celular abra sus opciones en el mismo toque; si el celular se
 niega, queda «Imagen lista: toca para enviar». Los datos de la imagen quedan en
 `window.__cotizacion` (lo usan las pruebas).

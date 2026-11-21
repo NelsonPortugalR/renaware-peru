@@ -827,8 +827,14 @@ async function inicial() {
   igual(await valor(), 963, "la ficha abre con la inicial mínima: 10 % de S/ 9,629");
   await s.pestana("Autocompra");
   igual(await valor(), 963, "en autocompra la inicial es la misma: el 10 % del precio de cliente (no se recalcula con el precio de autocompra)");
+  await credito();
+  ok(/^Inicial mínima: S\/ 963 /.test(await s.texto(".modal-box .mini-hint")), "y ese es también el mínimo que anuncia la ficha → " + await s.texto(".modal-box .mini-hint"));
+  await escribir(900); await p.keyboard.press("Enter"); await p.waitForTimeout(250);
+  igual(await valor(), 963, "no deja bajarla de ahí (S/ 900 sería más del 10 % del precio de autocompra, pero no del de cliente)");
+  ok(/menor al 10% del precio de cliente/.test(await s.texto(".modal-box .alert-toast")), "y dice por qué → " + await s.texto(".modal-box .alert-toast"));
+  await contado();
   await s.pestana("Cliente");
-  igual(await valor(), 963, "y al volver a Precio Cliente sigue igual");
+  igual([await valor(), await s.cuenta(".modal-box .alert-toast")], [963, 0], "y al volver a Precio Cliente sigue igual, sin avisos");
   igual(await s.texto(".modal-box .cbox-ayuda"), "Toca el monto para cambiarlo", "debajo dice que la inicial se puede cambiar");
   igual(await s.cuenta(".modal-box .cbox-ok"), 0, "sin botón OK mientras no se toca");
   await campo().click(); await p.waitForTimeout(260);
@@ -926,15 +932,21 @@ const hojaDeCompartir = (pagina) => pagina.evaluate(() => {
     const f = window.__falla.shift();
     if (f) { const e = new Error(f); e.name = f; throw e; }
     const a = (d.files || [])[0], b = a ? await createImageBitmap(a) : null;
-    let tinta = 0;
+    let tinta = 0, verde = 0, rojo = 0, borde = [];
     if (b) {
-      const c = document.createElement("canvas"); c.width = b.width; c.height = 250;
-      const g = c.getContext("2d"); g.drawImage(b, 0, -150);
-      const px = g.getImageData(0, 0, c.width, 250).data;
+      const c = document.createElement("canvas"); c.width = b.width; c.height = b.height;
+      const g = c.getContext("2d"); g.drawImage(b, 0, 0);
+      const px = g.getImageData(0, 150, c.width, 250).data;
       let n = 0; for (let i = 0; i < px.length; i += 4) if (px[i] < 235 || px[i + 1] < 235 || px[i + 2] < 235) n++;
       tinta = Math.round(n / (px.length / 4) * 1000) / 1000;
+      // cuánto verde oscuro y cuánto rojo hay en la imagen (las franjas de la foto de un especial de Navidad) y el color del borde izquierdo de la zona de la foto
+      const t = g.getImageData(0, 0, c.width, c.height).data;
+      let v = 0, r = 0;
+      for (let i = 0; i < t.length; i += 4) { if (t[i + 1] > t[i] + 15 && t[i + 1] > t[i + 2] && t[i] < 90 && t[i + 1] < 130) v++; else if (t[i] > 130 && t[i + 1] < 80 && t[i + 2] < 90) r++; }
+      verde = Math.round(v / (t.length / 4) * 1000) / 1000; rojo = Math.round(r / (t.length / 4) * 1000) / 1000;
+      borde = Array.from(g.getImageData(6, 300, 1, 1).data).slice(0, 3);
     }
-    window.__compartido.push({ nombre: a ? a.name : "", tipo: a ? a.type : "", bytes: a ? a.size : 0, ancho: b ? b.width : 0, alto: b ? b.height : 0, cuantos: (d.files || []).length, tinta });
+    window.__compartido.push({ nombre: a ? a.name : "", tipo: a ? a.type : "", bytes: a ? a.size : 0, ancho: b ? b.width : 0, alto: b ? b.height : 0, cuantos: (d.files || []).length, tinta, verde, rojo, borde });
   } });
 });
 async function cotizacion() {
@@ -949,7 +961,7 @@ async function cotizacion() {
   await p.locator(".tile .tile-btn").first().click(); await p.waitForTimeout(450);
   const todas = [3, 6, 9, 12, 15, 18];
   let m = await s.cot((x) => x.chip === "Precio Cliente" && esContado(x));
-  igual(m && [m.nombre, m.codigo, m.chip, m.auto, m.puntos], ["Juego Gourmet serie Zylstra", "Cod. 000158 - N° 1", "Precio Cliente", false, null], "dice el producto, su código y que es el precio de cliente; sin puntos");
+  igual(m && [m.nombre, m.codigo, m.chip, m.auto, m.regalo], ["Juego Gourmet serie Zylstra", "Cod. 000158 - N° 1", "Precio Cliente", false, ""], "dice el producto, su código y que es el precio de cliente");
   igual(m && m.bloques.map((b) => b.titulo), ["Al contado"], "con Contado tocado lleva solo el contado");
   igual(m && [m.bloques[0].total, m.bloques[0].pie], [{ t: "Precio contado", v: "S/ 9,629" }, [{ t: "Inicial", v: "S/ 963" }, { t: "Saldo contra entrega", v: "S/ 8,666" }]], "con el precio, la inicial y el saldo contra entrega");
   await pestana("Crédito");
@@ -998,13 +1010,12 @@ async function cotizacion() {
   igual(m && [m.chip, m.bloques.map((b) => b.titulo)], ["Precio Autocompra", ["Al contado"]], "al contado, sola");
   igual(m && [m.bloques[0].filas.map((f) => f.t), m.bloques[0].filas[0].v, m.bloques[0].filas[1].v, m.bloques[0].total], [["Precio contado", "Menos tu descuento"], "S/ 9,629", "- " + soles(9629 - tuPrecio), { t: "Tu precio (contado)", v: soles(tuPrecio) }], "con el precio, tu descuento y tu precio");
   igual(m && m.bloques[0].pie, [{ t: "Tu inicial", v: "S/ 2,000" }, { t: "Tu saldo contra entrega", v: soles(tuPrecio - 2000) }], "tu inicial y tu saldo");
-  ok(m && m.puntos && /^Esta autocompra te da [\d,]+ pts\.$/.test(m.puntos.t) && /primeras 4 semanas/.test(m.puntos.linea) && !!m.puntos.premio, "y abajo los puntos y el premio → " + JSON.stringify(m && m.puntos));
+  ok(m && !("puntos" in m), "sin los puntos ni el premio del Empiece Ya: ese sitio es para la foto del producto");
   await pestana("Crédito");
   m = await s.cot((x) => x.auto && esCredito(x));
   igual(m && [m.bloques[0].filas, m.bloques[0].cuotas], [[{ t: "Tu inicial", v: "S/ 2,000" }], todas.map((n) => ({ t: n + " cuotas de", v: soles(cuotaDe(tuPrecio - 2000, n)), antes: soles(cuotaDe(7629, n)) }))], "al crédito: tu inicial y, en cada plazo, la cuota del cliente (tachada) y la tuya");
-  ok(m && !!m.puntos, "también con los puntos");
   c = await compartir();
-  igual([c[c.length - 1].nombre, c[c.length - 1].ancho, c[c.length - 1].alto], ["cotizacion-000158-autocompra-credito-ini2000.png", 1080, 1350], "sale con su nombre y del mismo tamaño, aunque trae más cosas");
+  igual([c[c.length - 1].nombre, c[c.length - 1].ancho, c[c.length - 1].alto], ["cotizacion-000158-autocompra-credito-ini2000.png", 1080, 1350], "sale con su nombre y del mismo tamaño");
   await s.cerrarFicha();
 
   titulo("Un especial, un producto sin crédito y un repuesto: todas del mismo tamaño");
@@ -1013,6 +1024,8 @@ async function cotizacion() {
   const conPromo = await s.cuenta(".modal-box .price-reg") > 0;
   m = await s.cot((x) => x.chip === "Precio Cliente" && !/000158/.test(x.codigo) && esContado(x));
   igual(m && m.bloques[0].filas.map((f) => f.t), conPromo ? ["Precio regular", "Descuento"] : [], conPromo ? "el especial al contado, con su precio regular tachado y el descuento" : "el especial al contado, sin precio regular porque no lo tiene");
+  const regalo = await s.texto(".modal-box .gift-row");
+  ok(m && m.regalo.length > 3 && regalo.indexOf(m.regalo) >= 0, "y con su regalo escrito (en la foto no se alcanza a leer) → " + (m && m.regalo));
   await pestana("Crédito");
   m = await s.cot((x) => !/000158/.test(x.codigo) && esCredito(x));
   ok(m && m.bloques[0].cuotas.length >= 3 && m.bloques[0].cuotas.every((q) => /^S\/ [\d,]+$/.test(q.v)), "y al crédito, con sus cuotas → " + JSON.stringify(m && m.bloques[0].cuotas.map((q) => q.t + " " + q.v)));
@@ -1050,6 +1063,31 @@ async function cotizacion() {
   const cf = await f.pagina.evaluate(() => window.__compartido);
   ok(cf.length === 1 && cf[0].ancho === 1080 && cf[0].alto === 1350 && cf[0].tinta > 0.05, "con la foto arriba, grande, y del mismo tamaño → " + JSON.stringify(cf[0]));
   await f.fin("cotización con foto");
+
+  titulo("La foto de un especial: sin sus franjas y de lado a lado");
+  /* La foto de un especial de Navidad trae arriba una franja verde (su número y el descuento) y abajo una roja (el regalo).
+     En la cotización se quitan (el número y el regalo van escritos) para que los productos salgan grandes. Sin la franja
+     verde queda el verde oscuro de los rótulos y las verduras (0.5 % de la imagen); con ella, aun con la foto chica de la
+     versión anterior, era el 2.6 %. */
+  fs.copyFileSync(path.join(RAIZ, "promociones", "385800.webp"), path.join(dirFotos, "382000.webp"));
+  fs.copyFileSync(path.join(RAIZ, "promociones", "385800.webp"), path.join(dirFotos, "000158.webp"));
+  const e = await sesion({ movil: true, fotos: [dirFotos], cambiar: (m) => { sinBono(m); m.config.imagenes["382000"] = "https://kiexpdaaoegbtesqmaff.supabase.co/storage/v1/object/public/imagenes/382000-1.webp"; } });
+  await hojaDeCompartir(e.pagina);
+  await e.lista("Compartir");
+  await e.pagina.locator(".tile .tile-btn").first().click(); await e.pagina.waitForTimeout(1300);
+  const me = await e.cot((x) => /382000/.test(x.codigo));
+  await e.pagina.locator(".modal-box .share-quote-btn").click(); await e.pagina.waitForTimeout(700);
+  let ce = await e.pagina.evaluate(() => window.__compartido);
+  ok(me && me.regalo.length > 3 && ce.length === 1 && ce[0].verde < 0.012 && ce[0].rojo < 0.01, "en un especial con regalo se van la franja verde de arriba y la roja de abajo → " + JSON.stringify(ce[0]));
+  ok(ce[0] && ce[0].borde.every((v) => v > 215) && ce[0].borde.some((v) => v < 250) && ce[0].tinta > 0.03, "y el fondo de la foto llega de lado a lado, sin espacio vacío a los costados → borde " + JSON.stringify(ce[0] && ce[0].borde));
+  await e.cerrarFicha();
+  await e.lista("Lista General");
+  await e.pagina.locator(".tile .tile-btn").first().click(); await e.pagina.waitForTimeout(1300);
+  await e.cot((x) => /000158/.test(x.codigo));
+  await e.pagina.locator(".modal-box .share-quote-btn").click(); await e.pagina.waitForTimeout(700);
+  ce = await e.pagina.evaluate(() => window.__compartido);
+  ok(ce.length === 2 && ce[1].verde < 0.012 && ce[1].rojo > 0.02, "si el producto no tiene el regalo escrito, la franja del regalo se queda en la foto → " + JSON.stringify(ce[1]));
+  await e.fin("foto de un especial");
   fs.rmSync(dirFotos, { recursive: true, force: true });
 }
 

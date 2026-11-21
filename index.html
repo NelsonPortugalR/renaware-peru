@@ -888,7 +888,8 @@
   };
   var PaymentBlock = ({ base, auto, baseCliente, comparativo, summaryMode, priceData, creditBreakdown, soloContado, pagoTotal, onState }) => {
     const isSolo = pagoTotal || Finanzas.esSoloContado(base);
-    const minInicial = Finanzas.inicialMinima(base);
+    // En autocompra la inicial mínima es el 10 % del precio de cliente, no del precio de autocompra (Nelson, 20/11/2026)
+    const minInicial = Finanzas.inicialMinima(auto && baseCliente ? baseCliente : base);
     const eligible = !soloContado && Finanzas.eligeCredito(base, minInicial);
     const [tab, setTab] = useState("contado");
     const [selectedTerm, setSelectedTerm] = useState(18);
@@ -943,7 +944,7 @@
         v = minC;
         contado.setAlert(`Inicial ajustada al m\xEDnimo permitido (${formatMoney(minC)}).`);
       } else if (v < minC) {
-        contado.setAlert(isSolo ? `Para productos menores a S/ ${CONFIG.precioSoloContado}, la inicial debe ser el 100%. Se ajust\xF3 a ${formatMoney(base)}.` : `La inicial no puede ser menor al 10% del precio. Se ajust\xF3 al m\xEDnimo permitido (${formatMoney(minC)}).`);
+        contado.setAlert(isSolo ? `Para productos menores a S/ ${CONFIG.precioSoloContado}, la inicial debe ser el 100%. Se ajust\xF3 a ${formatMoney(base)}.` : `La inicial no puede ser menor al 10% del precio${auto ? " de cliente" : ""}. Se ajust\xF3 al m\xEDnimo permitido (${formatMoney(minC)}).`);
         v = minC;
       } else if (v > base) {
         contado.setAlert(`La inicial no puede ser mayor al precio a pagar. Se ajust\xF3 al m\xE1ximo permitido (${formatMoney(base)}).`);
@@ -959,7 +960,7 @@
         v = minInicial;
         credito.setAlert(`Inicial ajustada al valor m\xEDnimo del 10% (${formatMoney(minInicial)}).`);
       } else if (v < minInicial) {
-        credito.setAlert(`La inicial no puede ser menor al 10% del precio. Se ajust\xF3 al valor m\xEDnimo de inicial (${formatMoney(minInicial)}).`);
+        credito.setAlert(`La inicial no puede ser menor al 10% del precio${auto ? " de cliente" : ""}. Se ajust\xF3 al valor m\xEDnimo de inicial (${formatMoney(minInicial)}).`);
         v = minInicial;
       } else if (v > maxA) {
         credito.setAlert(`El saldo m\xEDnimo a financiar es S/ ${CONFIG.capitalMinimoFinanciar.toLocaleString()}. Se ajust\xF3 la inicial al tope permitido (${formatMoney(maxA)}).`);
@@ -1321,8 +1322,9 @@
   // algunos celulares tardaba o fallaba: «No se pudo generar la imagen»). Siempre mide 1080 × 1350 (4:5), el formato
   // vertical que WhatsApp muestra entero en el chat, igual para un producto de la lista general que para un especial.
   // Lleva lo que la asesora está viendo: el contado, o el crédito con todas sus cuotas (Nelson, 20/11/2026: con los dos
-  // juntos «todo se ve muy chico»). La letra es grande: se lee en el chat sin abrir la imagen. `m` son solo datos (los
-  // arma la ficha) y `foto` la imagen del producto ya cargada con permiso para copiarla (o null).
+  // juntos «todo se ve muy chico»). La letra es grande y la foto del producto, lo más grande posible: por eso la de
+  // autocompra no lleva los puntos ni el premio. `m` son solo datos (los arma la ficha) y `foto` la imagen del producto
+  // ya cargada con permiso para copiarla (o null).
   var FUENTE_COT = "'DM Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif";
   var fuentesCotizacion = () => {
     try {
@@ -1365,10 +1367,14 @@
       x.textAlign = "left";
       return w;
     };
-    // La foto. A la de un producto sobre fondo blanco se le quita el margen, para que el producto salga más grande
+    // La foto. A la de un producto sobre fondo blanco se le quita el margen, para que el producto salga más grande. A la de
+    // un especial, que trae arriba una franja con su número y abajo otra con el regalo, se le quitan las franjas (el número
+    // y el regalo van escritos aparte, en grande) y su color de fondo se extiende a todo el ancho: así los productos se
+    // distinguen y no queda espacio vacío a los costados (Nelson, 20/11/2026).
     let fo = null;
     if (foto && foto.naturalWidth && foto.naturalHeight) {
-      let rec = null;
+      const fw0 = foto.naturalWidth, fh0 = foto.naturalHeight;
+      let rec = null, banda = null, fondo = "", rgb = null;
       try {
         const n = 64, c2 = document.createElement("canvas");
         c2.width = n; c2.height = n;
@@ -1378,23 +1384,47 @@
         let x0 = n, y0 = n, x1 = -1, y1 = -1;
         for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { const k = (j * n + i) * 4; if (d[k] < 243 || d[k + 1] < 243 || d[k + 2] < 243) { if (i < x0) x0 = i; if (i > x1) x1 = i; if (j < y0) y0 = j; if (j > y1) y1 = j; } }
         if (x1 >= 0 && ((x0 + n - 1 - x1) / n > 0.12 || (y0 + n - 1 - y1) / n > 0.12)) {
-          const fw = foto.naturalWidth / n, fh = foto.naturalHeight / n;
+          const fw = fw0 / n, fh = fh0 / n;
           const sx = Math.max(0, x0 - 1) * fw, sy = Math.max(0, y0 - 1) * fh;
           rec = { sx, sy, sw: Math.min(n, x1 + 2) * fw - sx, sh: Math.min(n, y1 + 2) * fh - sy };
         }
-      } catch (e) { rec = null; }
-      fo = rec ? Object.assign({ recortada: true }, rec) : { sx: 0, sy: 0, sw: foto.naturalWidth, sh: foto.naturalHeight, recortada: false };
+        if (!rec) {
+          // franja = renglón de color (no claro) de lado a lado, pegado al borde de arriba o de abajo
+          const nx = 40, ny = 120, c3 = document.createElement("canvas");
+          c3.width = nx; c3.height = ny;
+          const g3 = c3.getContext("2d");
+          g3.fillStyle = "#fff"; g3.fillRect(0, 0, nx, ny); g3.drawImage(foto, 0, 0, nx, ny);
+          const q = g3.getImageData(0, 0, nx, ny).data;
+          const osc = (i, j) => { const k = (j * nx + i) * 4; return Math.min(q[k], q[k + 1], q[k + 2]) < 150; };
+          const franja = (j) => { if (!osc(0, j) || !osc(1, j) || !osc(nx - 1, j) || !osc(nx - 2, j)) return false; let t = 0; for (let i = 0; i < nx; i++) if (osc(i, j)) t++; return t / nx >= 0.5; };
+          let a = 0, b = 0;
+          while (a < ny * 0.4 && franja(a)) a++;
+          while (b < ny * 0.4 && franja(ny - 1 - b)) b++;
+          if (a < ny * 0.06) a = 0;
+          if (b < ny * 0.06 || !m.regalo) b = 0;   // la franja del regalo solo se quita si el regalo va escrito
+          if (a || b) {
+            const arriba = a ? a + ny * 0.02 : 0, abajo = b ? b + ny * 0.005 : 0;   // un poco más: el adorno de la franja cuelga sobre los productos
+            banda = { sx: 0, sy: arriba / ny * fh0, sw: fw0, sh: fh0 - (arriba + abajo) / ny * fh0 };
+            // el color de fondo de lo que queda: la mediana de sus bordes
+            const filas = [0.2, 0.4, 0.6, 0.8].map((t) => Math.round(arriba + (ny - arriba - abajo) * t)), muestras = [];
+            filas.forEach((j) => [1, nx - 2].forEach((i) => { const k = (j * nx + i) * 4; muestras.push([q[k], q[k + 1], q[k + 2]]); }));
+            const col = [0, 1, 2].map((u) => muestras.map((v) => v[u]).sort((p1, p2) => p1 - p2)[Math.floor(muestras.length / 2)]);
+            if (Math.min.apply(null, col) > 200) { fondo = "rgb(" + col.join(",") + ")"; rgb = col; }
+          }
+        }
+      } catch (e) { rec = null; banda = null; fondo = ""; rgb = null; }
+      fo = rec ? Object.assign({ recortada: true, fondo: "" }, rec) : banda ? Object.assign({ recortada: false, fondo, rgb, sinArriba: banda.sy > 0 }, banda) : { sx: 0, sy: 0, sw: fw0, sh: fh0, recortada: false, fondo: "" };
     }
     // Todo lo que va debajo de la foto, a una escala k. Con k = 1 la letra es la más grande; si así la foto quedara muy
-    // chica (autocompra de un especial: descuento, cuotas tachadas y puntos), se prueba con una escala algo menor.
+    // chica (un especial al crédito en autocompra: nombre largo, regalo y cuotas tachadas), se prueba con una escala algo menor.
     const componer = (k) => {
       const z = (n) => Math.round(n * k);
       const pasos = [];
       const pon = (alto, pinta) => pasos.push({ alto, pinta });
-      // nombre: lo más grande que entre en dos renglones; el de un especial (que dice todo lo que trae) puede ir en tres
+      // nombre: lo más grande que entre en dos renglones; el de un especial muy largo (dice todo lo que trae) va en tres
       let fNom = "", nom = [], tNom = 0;
-      for (const t of [58, 52, 46]) { tNom = z(t); fNom = F(800, tNom); nom = partir(m.nombre, fNom, AN); if (nom.length <= 2) break; }
-      if (nom.length > 3) nom = partir(m.nombre, fNom, AN, 3);
+      for (const t of [58, 52, 46, 42, 38]) { tNom = z(t); fNom = F(800, tNom); nom = partir(m.nombre, fNom, AN); if (nom.length <= 2) break; }
+      if (nom.length > 2) { tNom = z(42); fNom = F(800, tNom); nom = partir(m.nombre, fNom, AN, 3); }
       const lhNom = Math.round(tNom * 1.15);
       pon(z(22) + nom.length * lhNom, (y) => nom.forEach((l, i) => txt(l, M, y + z(22) + Math.round(tNom * 0.84) + i * lhNom, fNom, C.tinta)));
       // código y a quién es el precio
@@ -1407,6 +1437,14 @@
         if (!m.auto) { x.strokeStyle = "#c7d7fe"; x.lineWidth = 2; x.stroke(); }
         txt(tChip, W - M - wChip + z(23), y + z(11) + hChip / 2 + z(9), fChip, m.auto ? "#fff" : C.azul, { esp: 1.2 });
       });
+      // el regalo del especial, escrito: en la foto no se alcanza a leer
+      if (m.regalo) {
+        const hG = z(58), fG = F(800, z(29)), tG = partir("Regalo: " + m.regalo, fG, AN - z(48), 1)[0] || "";
+        pon(z(6) + hG, (y) => {
+          caja(M, y + z(6), AN, hG, z(16)); x.fillStyle = "#ecfdf5"; x.fill(); x.strokeStyle = "#a7f3d0"; x.lineWidth = 2; x.stroke();
+          txt(tG, M + z(24), y + z(6) + hG / 2 + z(10), fG, "#065f46");
+        });
+      }
       // el bloque: al contado, o al crédito con todas sus cuotas
       (m.bloques || []).forEach((b) => {
         const P = z(32), IN = AN - 2 * P, esCred = b.tipo === "credito", izq = M + P, der = W - M - P;
@@ -1443,7 +1481,7 @@
           return;
         }
         const hFilas = filas.length * z(60);
-        const hTot = b.total ? (filas.length ? z(20) : 0) + z(128) + (b.total.nota ? z(40) : 0) : 0;
+        const hTot = b.total ? (filas.length ? z(20) : 0) + z(116) + (b.total.nota ? z(40) : 0) : 0;
         const hPie = pie.length ? z(18) + z(108) : 0;
         const alto = P + hTit + hFilas + hTot + hPie + P - z(6);
         pon(z(18) + alto, (y0) => {
@@ -1460,11 +1498,11 @@
           if (b.total) {
             if (filas.length) { x.fillStyle = "#e2e8f0"; x.fillRect(izq, cy + z(6), IN, 3); cy += z(20); }
             const rot = b.total.t.toUpperCase(), fR = F(800, z(30));
-            let tp = z(112);   // el precio, lo más grande que entre al lado de su rótulo
+            let tp = z(100);   // el precio: grande, pero sin quitarle sitio a la foto; y que entre al lado de su rótulo
             while (tp > 60 && mide(rot, fR, 1) + z(24) + mide(b.total.v, F(800, tp)) > IN) tp -= 4;
-            txt(rot, izq, cy + z(84), fR, C.azul, { esp: 1 });
-            txt(b.total.v, der, cy + z(100), F(800, tp), C.tinta, { der: true });
-            cy += z(128);
+            txt(rot, izq, cy + z(76), fR, C.azul, { esp: 1 });
+            txt(b.total.v, der, cy + z(90), F(800, tp), C.tinta, { der: true });
+            cy += z(116);
             if (b.total.nota) { txt(b.total.nota, der, cy + z(20), F(600, z(30)), C.suave, { der: true }); cy += z(40); }
           }
           if (pie.length) {   // la inicial y el saldo, en dos recuadros como en la ficha
@@ -1479,31 +1517,11 @@
           }
         });
       });
-      // puntos de la autocompra y la meta del Empiece Ya
-      if (m.puntos) {
-        const P = z(24), IN = AN - 2 * P, fT = F(800, z(33)), fL = F(500, z(27)), fP = F(800, z(29));
-        const lt = partir(m.puntos.t, fT, IN), ll = m.puntos.linea ? partir(m.puntos.linea, fL, IN) : [], lp = m.puntos.premio ? partir(m.puntos.premio, fP, IN - z(40)) : [];
-        const lhT = z(42), lhL = z(35), lhP = z(38);
-        const hP = lp.length ? z(22) + lp.length * lhP : 0;
-        const alto = P + lt.length * lhT + (ll.length ? z(4) + ll.length * lhL : 0) + (hP ? z(12) + hP : 0) + P - z(4);
-        pon(z(18) + alto, (y0) => {
-          const y = y0 + z(18);
-          caja(M, y, AN, alto, z(26)); x.fillStyle = "#fff7ed"; x.fill(); x.strokeStyle = "#fed7aa"; x.lineWidth = 2; x.stroke();
-          let cy = y + P;
-          lt.forEach((l) => { txt(l, M + P, cy + z(31), fT, "#7c2d12"); cy += lhT; });
-          if (ll.length) { cy += z(4); ll.forEach((l) => { txt(l, M + P, cy + z(26), fL, "#7c2d12"); cy += lhL; }); }
-          if (hP) {
-            cy += z(12);
-            caja(M + P, cy, IN, hP, z(16)); x.fillStyle = "#ecfdf5"; x.fill(); x.strokeStyle = "#a7f3d0"; x.lineWidth = 2; x.stroke();
-            let py = cy + z(11);
-            lp.forEach((l) => { txt(l, M + P + z(20), py + z(28), fP, "#065f46"); py += lhP; });
-          }
-        });
-      }
       return pasos;
     };
-    // la foto de un especial trae escrito lo que incluye y su regalo: necesita más alto que la de un producto suelto
-    const sitio = H - CAB - PIE, minFoto = fo ? (fo.recortada ? 230 : 280) : 0;
+    // la foto es lo que más pesa: si con la letra normal no le quedan al menos 340 px de alto (400 la de un especial, que
+    // trae varios productos), lo de abajo se achica un poco
+    const sitio = H - CAB - PIE, minFoto = fo ? (fo.recortada ? 340 : 400) : 0;
     let pasos = [], alto = 0;
     for (const k of [1, 0.94, 0.88, 0.82, 0.76]) {
       pasos = componer(k); alto = pasos.reduce((n, q) => n + q.alto, 0);
@@ -1519,9 +1537,30 @@
       const f = sitio / alto;
       x.save(); x.translate(W * (1 - f) / 2, CAB); x.scale(f, f); pintar(0); x.restore();
     } else if (fo && libre >= 150) {
-      const pad = fo.recortada ? 30 : 22, e = Math.min((W - 2 * pad) / fo.sw, (libre - 2 * pad) / fo.sh, 2.6);
+      if (fo.fondo) { x.fillStyle = fo.fondo; x.fillRect(0, CAB, W, libre); }   // el fondo del especial, de lado a lado
+      const padX = fo.recortada ? 30 : fo.fondo ? 0 : 22, padY = fo.recortada ? 30 : fo.fondo ? 12 : 22;
+      const e = Math.min((W - 2 * padX) / fo.sw, (libre - 2 * padY) / fo.sh, 2.6);
       const w = fo.sw * e, h2 = fo.sh * e, fx = (W - w) / 2, fy = CAB + (libre - h2) / 2;
-      if (fo.recortada) x.drawImage(foto, fo.sx, fo.sy, fo.sw, fo.sh, fx, fy, w, h2);
+      if (fo.recortada || fo.fondo) x.drawImage(foto, fo.sx, fo.sy, fo.sw, fo.sh, fx, fy, w, h2);
+      if (fo.fondo && fo.sinArriba) {
+        // Lo que colgaba de la franja de arriba (el adorno con el descuento y su sombra) queda como una manchita suelta en el
+        // borde: se borra. Es «suelto» lo que empieza pegado arriba y se acaba enseguida; un producto sigue hacia abajo.
+        try {
+          const ix = Math.round(fx), iy = Math.round(fy), iw = Math.round(w), tira = Math.round(h2 * 0.075), tope = Math.round(h2 * 0.045);
+          const im = x.getImageData(ix, iy, iw, tira), p = im.data, c = fo.rgb;
+          const esFondo = (k) => Math.abs(p[k] - c[0]) < 9 && Math.abs(p[k + 1] - c[1]) < 9 && Math.abs(p[k + 2] - c[2]) < 9;
+          for (let i = 0; i < iw; i++) {
+            let r0 = 0;
+            while (r0 < tope && esFondo((r0 * iw + i) * 4)) r0++;
+            if (r0 >= tope) continue;
+            let r1 = r0;
+            while (r1 < tira && !esFondo((r1 * iw + i) * 4)) r1++;
+            if (r1 >= tira) continue;   // sigue hacia abajo: es un producto
+            for (let r = r0; r < r1; r++) { const k = (r * iw + i) * 4; p[k] = c[0]; p[k + 1] = c[1]; p[k + 2] = c[2]; p[k + 3] = 255; }
+          }
+          x.putImageData(im, ix, iy);
+        } catch (e) {}
+      }
       else { x.save(); caja(fx, fy, w, h2, 22); x.clip(); x.drawImage(foto, fo.sx, fo.sy, fo.sw, fo.sh, fx, fy, w, h2); x.restore(); }
       x.fillStyle = C.linea; x.fillRect(0, CAB + libre - 2, W, 2);
       pintar(CAB + libre);
@@ -1586,7 +1625,7 @@
     const cotEnCredito = !esCat && ps.tab === "credito" && !!ps.eligible && (ps.opciones || []).length > 0;
     const armarCotizacion = () => {
       const fm = formatMoney;
-      const m = { fecha: fechaHoy, nombre: esCat ? product.titulo || product.name : product.name, chip: psAuto ? (esCat ? "Precio Asesor" : "Precio Autocompra") : "Precio Cliente", auto: !!psAuto, bloques: [], puntos: null,
+      const m = { fecha: fechaHoy, nombre: esCat ? product.titulo || product.name : product.name, chip: psAuto ? (esCat ? "Precio Asesor" : "Precio Autocompra") : "Precio Cliente", auto: !!psAuto, bloques: [], regalo: !esCat && product.gift ? String(product.gift) : "",
         codigo: esCat ? (product.esServicio ? [product.catRaw, product.unidad].filter(Boolean).join(" \xB7 ") : "Cod. " + product.codigo) : "Cod. " + product.codigo + " - N\xB0 " + product.orden };
       if (esCat) {
         m.bloques.push(psAuto
@@ -1612,10 +1651,7 @@
         }
         m.bloques.push({ tipo: "contado", titulo: "Al contado", filas, total: { t: psAuto ? "Tu precio (contado)" : "Precio contado", v: fm(base) }, pie });
       }
-      if (psAuto) m.puntos = {
-        t: bonoVigente2 ? "Si compras hoy, tu puntaje sube " + bonoInfo.porcentaje + "% y ser\xEDa " + pts.toLocaleString("es-PE") + " pts." : "Esta autocompra te da " + pts.toLocaleString("es-PE") + " pts.",
-        linea: muestraPremio ? "Si te encuentras en tus primeras 4 semanas, " + (!metaInfo.alcanzado ? "te faltan solo " + metaInfo.faltante + " pts y solo " + metaInfo.meta.afiliados + " afiliados para ganar:" : "con solo " + metaInfo.meta.afiliados + " afiliados ganas:") : "",
-        premio: muestraPremio ? metaInfo.meta.premio : "" };
+      // (los puntos y el premio del Empiece Ya ya no van en la imagen: Nelson los quitó para darle sitio al producto)
       return m;
     };
     const claveCot = JSON.stringify(armarCotizacion()) + "|" + fotoLista;
