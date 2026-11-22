@@ -15,6 +15,7 @@ Cloudflare con archivos estáticos). Cada push a `main` publica solo.
 |---|---|
 | `index.html` | Todo el portal: una sola página, React desde CDN, sin compilar. |
 | `promociones/` | Fotos por código: especiales (`382000.webp`), repuestos (`30104.webp`), servicios (`sv-*.webp`) y los equipos de cada sección de Repuestos (`eq-*.webp`). La web pública también toma de aquí las de repuestos y especiales. |
+| `worker.js` | El Worker solo responde `/geo` (la ubicación aproximada de la conexión, para Estadísticas); los archivos no pasan por él. |
 | `_redirects` | Manda `/admin` al mismo `index.html` para que abra el panel. |
 | `_headers` | Que ningún buscador indexe el portal. |
 | `.assetsignore` | Lo que no se publica: `sql/`, `pruebas/`, este archivo, la configuración. |
@@ -52,16 +53,21 @@ validan la sesión.
   `site_config`, que se edita desde el panel de administración.
 - **Asesores**: la base del equipo. Se entra con el DNI (desde el 12/11/2026): la persona tiene que estar activa en la base del equipo con su DNI (el celular no hace falta). La pestaña dice a quién le falta el DNI y permite invitar, con DNI, a alguien que no está en el equipo.
 
-- **Uso**: `eventos` (con `registrar_evento`). Tipos: `sesion_inicio` (entró
-  con su DNI), `visita` (volvió con la sesión guardada; trae equipo, sistema,
-  navegador, pantalla y zona), `sesion_fin`, `latido` (uno por minuto con la
-  página a la vista: son los minutos de uso), `ver_lista`, `ver_producto`,
-  `buscar` (texto y cuántos resultados), `cotizacion` (vía compartir o copiar,
-  y el resultado), `video` (resultado, peso, cuánto demoró y de dónde salió),
-  `ver_video`, `simulador`, `comparador`, `tutorial` y `error` (errores de la
-  página en el equipo de la asesora). Se ve en **Admin → Actividad**
-  (`admin_actividad`): totales, una tarjeta por persona, por día, equipos,
-  productos más abiertos, búsquedas, fallas al compartir y últimos movimientos.
+- **Uso**: `eventos`. La página guarda cada evento en una cola del equipo
+  (`rw_eventos_v1`) y los manda en lotes con `registrar_eventos`: si no hay
+  señal o el celular cierra la página, salen en la próxima visita, sin
+  repetirse (cada uno lleva su id) y con la hora en que pasaron. Tipos:
+  `sesion_inicio`, `visita` (una por carga, con el equipo, su id
+  `rw_equipo_v1` y la ubicación aproximada de `/geo`), `sesion_fin`, `latido`
+  (minutos de uso), `ver_lista`, `ver_producto`, `buscar`, `cotizacion` y
+  `video` (en dos tiempos: `fase: abre` al abrir WhatsApp y el resultado al
+  volver, con el mismo `envio`), `ver_video`, `simulador`, `comparador`,
+  `tutorial` y `error`. Se ve en **Admin → Estadísticas**
+  (`admin_estadisticas`): período, «Sin mí» (sin las cuentas de
+  `actividad_internos`), cifras contra el período anterior, posibles cuentas
+  compartidas, uso por día, horario, día × hora, semanas, envíos, embudo,
+  personas (con sus equipos y lugares, y en CSV), ubicación, equipos,
+  contenido, fallas, las que ya no entran y últimos movimientos.
 
 ## Listas de especiales en el menú
 
@@ -169,7 +175,7 @@ valores comisionables. Los datos de `pruebas/datos.json` usan cifras inventadas.
 ## Pruebas
 
 ```
-node pruebas/prueba.js            # todo (unos 3 minutos; 530 verificaciones)
+node pruebas/prueba.js            # todo (unos 3 minutos; 553 verificaciones)
 SOLO=servicios node pruebas/prueba.js
 SOLO=inicial,cotizacion,video,permanencia node pruebas/prueba.js
 node pruebas/prueba.js capturas/  # además deja capturas

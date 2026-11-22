@@ -6,6 +6,7 @@
 node_modules
 .wrangler
 wrangler.jsonc
+worker.js
 README.md
 sql
 pruebas

@@ -92,7 +92,8 @@
       so, navegador: nav,
       pantalla: (window.screen ? screen.width + "x" + screen.height : ""),
       zona: (Intl.DateTimeFormat().resolvedOptions().timeZone || ""),
-      idioma: navigator.language || ""
+      idioma: navigator.language || "",
+      eq: idEquipo, modelo: modeloEquipo || undefined, geo: geoInfo || undefined
     };
   };
   var sesionTok = "";
@@ -105,12 +106,77 @@
     return { nombre: nombrePropio(s.nombre), celular: /^9\d{8}$/.test(c) ? c.slice(0, 3) + " " + c.slice(3, 6) + " " + c.slice(6) : "" };
   };
   var enTour = false;   // mientras corre el tutorial, las listas y fichas que abre el recorrido no cuentan como uso
-  var rastrear = (tipo, detalle) => {
-    if (!sb || !sesionTok) return;
-    if (enTour && tipo !== "tutorial" && tipo !== "latido") return;
-    // supabase-js arma la llamada pero solo la envía cuando alguien la espera: sin el then no salía ningún evento
-    try { sb.rpc("registrar_evento", { p_token: sesionTok, p_tipo: tipo, p_detalle: detalle || {} }).then(() => {}, () => {}); } catch (e) {}
+  // Registro de uso (Admin → Estadísticas). Cada evento se guarda primero en este equipo (una cola en localStorage) y sale
+  // en lotes por `registrar_eventos`. Si no hay señal, o si el celular cierra la página mientras se comparte (pasa con
+  // WhatsApp y un video pesado), sale en la próxima visita: antes ese evento se perdía (21/11/2026). Cada uno lleva su id
+  // (aunque llegue dos veces, se guarda una) y la hora en que pasó, no la de llegada.
+  var COLA_KEY = "rw_eventos_v1", EQUIPO_KEY = "rw_equipo_v1";
+  var nuevoId = () => {
+    try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID(); } catch (e) {}
+    const b = new Uint8Array(16);
+    try { crypto.getRandomValues(b); } catch (e) { for (let i = 0; i < 16; i++) b[i] = Math.floor(Math.random() * 256); }
+    b[6] = (b[6] & 15) | 64; b[8] = (b[8] & 63) | 128;
+    const x = Array.from(b, (v) => (v + 256).toString(16).slice(1)).join("");
+    return x.slice(0, 8) + "-" + x.slice(8, 12) + "-" + x.slice(12, 16) + "-" + x.slice(16, 20) + "-" + x.slice(20);
   };
+  // el id de este equipo (de este navegador): se crea una vez y queda guardado; dice desde cuántos equipos entra cada persona
+  var idEquipo = (() => { let v = ""; try { v = localStorage.getItem(EQUIPO_KEY) || ""; if (!/^[0-9a-f-]{36}$/.test(v)) { v = nuevoId(); localStorage.setItem(EQUIPO_KEY, v); } } catch (e) { v = v || nuevoId(); } return v; })();
+  var colaMem = [];   // si el navegador no deja guardar (modo privado), la cola vive mientras la página esté abierta
+  var leerCola = () => { try { const c = JSON.parse(localStorage.getItem(COLA_KEY) || "[]"); return Array.isArray(c) ? c : []; } catch (e) { return colaMem; } };
+  var guardarCola = (c) => { const v = c.slice(-300); try { localStorage.setItem(COLA_KEY, JSON.stringify(v)); } catch (e) { colaMem = v; } };
+  var enviandoDesde = 0, esperaEnvio = null;
+  var enviarEventos = (alSalir) => {
+    clearTimeout(esperaEnvio); esperaEnvio = null;
+    if (!sbReady) return;
+    const cola = leerCola();
+    if (!cola.length || (enviandoDesde && !alSalir && Date.now() - enviandoDesde < 20000)) return;
+    const tok = cola[0].tok, lote = cola.filter((e) => e.tok === tok).slice(0, 60), ids = {};
+    lote.forEach((e) => { ids[e.id] = 1; });
+    const cuerpo = JSON.stringify({ p_token: tok, p_eventos: lote.map((e) => ({ id: e.id, tipo: e.tipo, t: e.t, d: e.d })), p_equipo: idEquipo });
+    enviandoDesde = Date.now();
+    let pedido;
+    try {
+      // al salir de la página (o al irse a WhatsApp) el pedido sigue aunque la página se cierre: keepalive
+      pedido = fetch(SUPABASE_URL + "/rest/v1/rpc/registrar_eventos", { method: "POST", keepalive: !!alSalir && cuerpo.length < 60000,
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: "Bearer " + SUPABASE_ANON_KEY, "Content-Type": "application/json" }, body: cuerpo });
+    } catch (e) { enviandoDesde = 0; return; }
+    pedido.then((r) => r.ok ? r.json() : Promise.reject(new Error("HTTP " + r.status))).then((n) => {
+      // n: cuántos guardó; -1: esa sesión ya no vale y sus eventos se descartan
+      guardarCola(leerCola().filter((e) => !ids[e.id] && !(n === -1 && e.tok === tok)));
+      enviandoDesde = 0;
+      if (leerCola().length) esperaEnvio = setTimeout(enviarEventos, 400);
+    }).catch(() => { enviandoDesde = 0; esperaEnvio = setTimeout(enviarEventos, 30000); });
+  };
+  var rastrear = (tipo, detalle, urgente) => {
+    if (!sesionTok) return;
+    if (enTour && tipo !== "tutorial" && tipo !== "latido") return;
+    const c = leerCola();
+    c.push({ id: nuevoId(), tok: sesionTok, tipo, t: Date.now(), d: detalle || {} });
+    guardarCola(c);
+    if (urgente) enviarEventos(true);
+    else if (!esperaEnvio) esperaEnvio = setTimeout(enviarEventos, 1500);
+  };
+  // Ubicación aproximada: la ciudad y el operador de la conexión a internet (Cloudflare la sabe por la IP; la responde el
+  // Worker en /geo, sin GPS ni permisos). Y el modelo del celular (Chrome en Android lo dice; el iPhone no). Van en cada
+  // visita e ingreso, para ver en Estadísticas desde dónde y desde qué equipos entra cada persona.
+  var geoInfo = null, geoPedido = null, modeloEquipo = "", modeloPedido = null;
+  var pedirGeo = () => geoPedido || (geoPedido = fetch("/geo", { cache: "no-store" }).then((r) => r.ok ? r.json() : null)
+    .then((g) => { geoInfo = g && typeof g === "object" && (g.ciudad || g.region || g.pais) ? g : null; return geoInfo; }).catch(() => null));
+  var pedirModelo = () => modeloPedido || (modeloPedido = (() => {
+    try { const u = navigator.userAgentData; if (u && u.getHighEntropyValues) return u.getHighEntropyValues(["model"]).then((v) => (modeloEquipo = String((v && v.model) || "").slice(0, 40))).catch(() => ""); } catch (e) {}
+    return Promise.resolve("");
+  })());
+  var conTope = (p, ms) => Promise.race([p, new Promise((r) => setTimeout(() => r(null), ms))]);
+  var contextoCompleto = () => Promise.all([conTope(pedirGeo(), 2500), conTope(pedirModelo(), 1500)]).then(() => contexto(), () => contexto());
+  var visitaAnotada = false;   // una visita por carga de la página (antes se anotaba otra cada vez que se reconfirmaba la sesión)
+  try {
+    pedirGeo(); pedirModelo();
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") enviarEventos(true); });
+    window.addEventListener("pagehide", () => enviarEventos(true));
+    window.addEventListener("online", () => enviarEventos());
+    setTimeout(enviarEventos, 2500);   // lo que quedó pendiente de la visita anterior
+    window.__rwEnviarEventos = enviarEventos;   // para las pruebas
+  } catch (e) {}
   // Lo último que se supo de quien entró en este equipo: con eso pasa de inmediato al volver, aunque la red falle
   var SESION_DATOS_KEY = "rw_sesion_datos_v1";
   var recordarSesion = (s) => {
@@ -1199,9 +1265,10 @@
       const t = setTimeout(() => { if (vivo.current) { setMsg(""); if (estado === "fallo") setEstado(""); } }, 9e3);
       return () => clearTimeout(t);
     }, [msg, estado]);
-    const anotar = (resultado, extra) => rastrear("video", Object.assign({ accion: "enviar", resultado, codigo: codigo || "", nombre: name || "" }, extra || {}));
-    const enlace = (e) => {   // WhatsApp directo, con el texto y la dirección del video
-      if (e) e.stopPropagation();
+    const anotar = (resultado, extra, urgente) => rastrear("video", Object.assign({ accion: "enviar", resultado, codigo: codigo || "", nombre: name || "" }, extra || {}), urgente);
+    const enlace = (e, motivo) => {   // WhatsApp directo, con el texto y la dirección del video (también queda anotado)
+      if (e && e.stopPropagation) e.stopPropagation();
+      anotar(typeof motivo === "string" ? motivo : estado === "bajando" ? "enlace_demora" : "enlace_fallo", null, true);
       window.open("https://wa.me/?text=" + encodeURIComponent(texto + "\n" + src), "_blank");
     };
     const enviar = async (e) => {
@@ -1209,12 +1276,11 @@
       if (estado === "bajando") return;
       const t0 = Date.now();
       if (!archivo || !puedeAdjuntarVideo()) {   // un enlace de YouTube, o un navegador que no adjunta archivos: va el enlace, en este mismo toque
-        enlace();
+        enlace(null, archivo ? "enlace_sin_adjuntar" : "enlace");
         if (archivo) setMsg("Tu navegador no deja adjuntar el video: se env\xEDa el enlace.");
-        anotar(archivo ? "enlace_sin_adjuntar" : "enlace");
         return;
       }
-      let paso = "bajar";
+      let paso = "bajar", envio = null;
       try {
         let file = videoListo.src === src ? videoListo.file : null;
         const yaEstaba = !!file;
@@ -1224,6 +1290,8 @@
           if (!vivo.current) { anotar("cerro_antes", { ms: Date.now() - t0, mb: Math.round(file.size / 104857.6) / 10 }); return; }   // cerró la ficha mientras bajaba: el video queda guardado para la próxima
         }
         paso = "compartir";
+        envio = nuevoId();   // si el celular cierra la página mientras se comparte, al menos queda que se abrió
+        anotar("", { fase: "abre", envio }, true);
         let r = "ok";
         try { await navigator.share(paraCompartir(file, name || "Video", texto)); }
         catch (err) { if (err && err.name === "AbortError") r = "cancelado"; else if (err && err.name === "NotAllowedError") r = "otro_toque"; else throw err; }
@@ -1231,10 +1299,10 @@
           if (r === "otro_toque") { setEstado("listo"); setMsg("El video ya est\xE1 listo. Toca \xABEnviar\xBB otra vez."); }
           else { setEstado(""); setMsg(""); }
         }
-        anotar(r, { ms: Date.now() - t0, mb: Math.round(file.size / 104857.6) / 10, origen: yaEstaba ? "listo" : videoListo.origen });
+        anotar(r, { envio, ms: Date.now() - t0, mb: Math.round(file.size / 104857.6) / 10, origen: yaEstaba ? "listo" : videoListo.origen });
       } catch (err) {
         if (vivo.current) { setEstado("fallo"); setMsg(paso === "bajar" ? "No se pudo preparar el video. Revisa tu conexi\xF3n." : "Tu celular no dej\xF3 compartir el video."); }
-        anotar("error", { paso, error: String(err && (err.name ? err.name + ": " : "") + (err.message || err) || "").slice(0, 160) });
+        anotar("error", { paso, envio: envio || undefined, error: String(err && (err.name ? err.name + ": " : "") + (err.message || err) || "").slice(0, 160) });
       }
     };
     const rotulo = estado === "bajando" ? (pct ? "Preparando " + pct + "%" : "Preparando\u2026") : estado === "listo" ? "Video listo: enviar" : "Enviar video";
@@ -1746,13 +1814,13 @@
       document.body.appendChild(a); a.click();
       setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 4e3);
     };
-    const anotarCot = (via, resultado, extra) => rastrear("cotizacion", Object.assign({ via, resultado, lista: product.lista, codigo: product.codigo, nombre: product.name, modo: psAuto ? "autocompra" : "cliente" }, extra || {}));
+    const anotarCot = (via, resultado, extra, urgente) => rastrear("cotizacion", Object.assign({ via, resultado, lista: product.lista, codigo: product.codigo, nombre: product.name, modo: psAuto ? "autocompra" : "cliente" }, extra || {}), urgente);
     const fallo = (e) => String(e && (e.name ? e.name + ": " : "") + (e.message || e) || "").slice(0, 160);
     const shareQuote = async () => {
       if (capturing) return;
       setCapErr(""); setCapMsg("");
       const t0 = Date.now();
-      let file = pendiente || (cotRef.current.clave === claveCot ? cotRef.current.file : null), paso = "imagen";
+      let file = pendiente || (cotRef.current.clave === claveCot ? cotRef.current.file : null), paso = "imagen", envio = null;
       setCapturing(true);
       try {
         if (!file) file = await armarArchivo(true);
@@ -1762,16 +1830,18 @@
           setCapMsg("Tu navegador no deja compartir: la imagen se guard\xF3 en tu equipo.");
           anotarCot("compartir", "descarga");
         } else {
+          envio = nuevoId();
+          anotarCot("compartir", "", { fase: "abre", envio }, true);
           let r = "ok";
           try { await navigator.share(paraCompartir(file, "Cotizacion", "Cotizacion - " + product.name)); }
           catch (e) { if (e && e.name === "AbortError") r = "cancelado"; else if (e && e.name === "NotAllowedError") r = "otro_toque"; else throw e; }
           if (r === "otro_toque") { setPendiente(file); setCapMsg("La imagen ya est\xE1 lista. Toca otra vez para enviarla."); }
           else setPendiente(null);
-          anotarCot("compartir", r, { ms: Date.now() - t0 });
+          anotarCot("compartir", r, { envio, ms: Date.now() - t0 });
         }
       } catch (e) {
         setCapErr(paso === "imagen" ? "No se pudo armar la imagen. Int\xE9ntalo de nuevo." : "Tu celular no dej\xF3 compartir la imagen. Int\xE9ntalo de nuevo.");
-        anotarCot("compartir", "error", { paso, error: fallo(e) });
+        anotarCot("compartir", "error", { paso, envio: envio || undefined, error: fallo(e) });
       }
       setCapturing(false);
     };
@@ -2056,7 +2126,8 @@
   var EQUIPO_SO = { "iPhone OS": "iPhone", iOS: "iPhone", "Mac OS X": "Mac", macOS: "Mac" };
   var describirEvento = (e) => {
     const d = e.detalle || {}, r = d.resultado || "";
-    const cual = { ok: "enviada", cancelado: "cancelada", otro_toque: "pidi\xF3 otro toque", error: "fall\xF3", descarga: "descargada", enlace: "por enlace", enlace_sin_adjuntar: "por enlace (no adjunta)", cerro_antes: "no enviado (cerr\xF3 la ficha mientras se preparaba)" }[r] || r;
+    if (d.fase === "abre") return "abri\xF3 WhatsApp para enviar " + (e.tipo === "video" ? "el video de " : "la cotizaci\xF3n de ") + (d.nombre || d.codigo || "");
+    const cual = { ok: "enviada", cancelado: "cancelada", otro_toque: "pidi\xF3 otro toque", error: "fall\xF3", descarga: "descargada", enlace: "por enlace", enlace_sin_adjuntar: "por enlace (no adjunta)", cerro_antes: "no enviado (cerr\xF3 la ficha mientras se preparaba)", enlace_demora: "por enlace (el video demoraba)", enlace_fallo: "por enlace (no se pudo preparar)" }[r] || r;
     switch (e.tipo) {
       case "sesion_inicio": return "ingres\xF3 con su DNI";
       case "visita": return "entr\xF3";
@@ -2074,67 +2145,334 @@
       default: return String(e.tipo || "").replace(/_/g, " ");
     }
   };
-  var ROTULO_TIPO = { sesion_inicio: "Ingresos con DNI", visita: "Visitas", ver_lista: "Listas abiertas", ver_producto: "Fichas abiertas", ver_video: "Videos vistos", video: "Videos (intentos de env\xEDo)", cotizacion: "Cotizaciones (intentos)", buscar: "B\xFAsquedas", tutorial: "Tutorial", simulador: "Simulador", comparador: "Buscador maestro", sesion_fin: "Cierres de sesi\xF3n", error: "Errores" };
-  var ActividadAdmin = () => {
-    const [d, setD] = useState(null);
-    const [dias, setDias] = useState(7);
-    const [msg, setMsg] = useState("");
+  // ---- Admin → Estadísticas (21/11/2026; Nelson: «un panel con todas las estadísticas posibles», para proponer la
+  // herramienta a nivel corporativo). Todo lo calcula la base (admin_estadisticas); aquí solo se dibuja. Los gráficos
+  // son SVG propios, de un solo color (el azul del portal): muestran el detalle al tocarlos o al pasar el mouse y tienen
+  // sus números en una tabla («Ver números»). Arriba, una sola fila de filtros (período y «Sin mí») para todo el panel.
+  var nf = (n) => Number(n || 0).toLocaleString("es-PE");
+  var compacto = (n) => n >= 10000 ? Math.round(n / 1000) + " mil" : nf(n);
+  var DIA_SEM = ["", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
+  var diaCorto = (d) => new Date(d + "T12:00:00-05:00").toLocaleDateString("es-PE", { day: "numeric", month: "short", timeZone: "America/Lima" }).replace(".", "");
+  var diaLargo = (d) => new Date(d + "T12:00:00-05:00").toLocaleDateString("es-PE", { weekday: "long", day: "numeric", month: "long", timeZone: "America/Lima" });
+  var nombreVisible = (n) => !n ? "Sin nombre" : /[a-zñáéíóú]/.test(n) ? n : nombrePropio(n);
+  var conPor = (t) => String(t || "").replace(/(\d)x(\d)/g, "$1×$2");   // 360x800 → 360×800
+  var listaVisible = (k) => (typeof ETIQUETA_CORTA !== "undefined" && ETIQUETA_CORTA[k]) || k;
+  var haceCuanto = (iso) => {
+    if (!iso) return "—";
+    const t = new Date(iso), min = (Date.now() - t.getTime()) / 60000;
+    if (min < 2) return "ahora";
+    if (min < 60) return "hace " + Math.round(min) + " min";
+    const dia = (x) => x.toLocaleDateString("es-PE", { timeZone: "America/Lima" });
+    const hora = t.toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Lima" });
+    if (dia(t) === dia(new Date())) return "hoy " + hora;
+    if (dia(t) === dia(new Date(Date.now() - 864e5))) return "ayer " + hora;
+    return fechaCorta(iso);
+  };
+  // el escalón «redondo» de un eje: 1, 2, 5, 10, 20, 50…
+  var redondo = (x) => { if (!(x > 0)) return 1; const p = Math.pow(10, Math.floor(Math.log10(x))), m = x / p; return Math.max(1, (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p); };
+  var useAncho = (ref, inicial) => {
+    const [w, setW] = useState(inicial || 320);
+    useEffect(() => {
+      const el = ref.current;
+      if (!el) return;
+      const medir = () => { const x = Math.floor(el.getBoundingClientRect().width); if (x > 0) setW(x); };
+      medir();
+      let ro = null;
+      if (typeof ResizeObserver !== "undefined") { ro = new ResizeObserver(medir); ro.observe(el); } else window.addEventListener("resize", medir);
+      return () => { if (ro) ro.disconnect(); else window.removeEventListener("resize", medir); };
+    }, []);
+    return w;
+  };
+  var TablaNum = ({ cols, filas }) => h("div", { className: "est-tabla-caja" }, h("table", { className: "est-tabla" },
+    h("thead", null, h("tr", null, cols.map((c) => h("th", { key: c[0] }, c[0])))),
+    h("tbody", null, filas.map((f, i) => h("tr", { key: i }, cols.map((c) => h("td", { key: c[0] }, c[1](f))))))));
+  // Columnas: una serie en el tiempo (días u horas). El detalle de cada columna sale al tocarla; el mayor valor va escrito.
+  var Columnas = ({ datos, valor, eje, detalle, cols, nombre, alto }) => {
+    const ref = useRef(null), W = useAncho(ref, 330);
+    const [sel, setSel] = useState(-1), [tabla, setTabla] = useState(false);
+    const n = datos.length, H = alto || 150, IZQ = 34, ABA = 20, ARR = 16;
+    const vals = datos.map((d) => Number(valor(d)) || 0), max = Math.max(0, ...vals);
+    const paso = redondo(max / 3), tope = Math.max(paso, Math.ceil(max / paso) * paso);
+    const ancho = Math.max(10, W - IZQ - 2), slot = ancho / Math.max(1, n), bw = Math.max(2, Math.min(24, slot * 0.7));
+    const y = (v) => ARR + (H - ARR - ABA) * (1 - v / tope);
+    const ticks = []; for (let v = 0; v <= tope + 1e-9; v += paso) ticks.push(v);
+    const cada = Math.max(1, Math.ceil(n / Math.max(2, Math.floor(ancho / 46))));
+    const iMax = max > 0 ? vals.indexOf(max) : -1;
+    const columna = (v, i) => {
+      if (!(v > 0)) return "";
+      const x = IZQ + slot * i + (slot - bw) / 2, top = y(v), base = y(0), r = Math.min(4, bw / 2, base - top);
+      return "M" + x + "," + base + "V" + (top + r) + "Q" + x + "," + top + " " + (x + r) + "," + top + "H" + (x + bw - r) + "Q" + (x + bw) + "," + top + " " + (x + bw) + "," + (top + r) + "V" + base + "Z";
+    };
+    const centro = (i) => IZQ + slot * i + slot / 2;
+    const tip = sel >= 0 && sel < n ? detalle(datos[sel]) : null;
+    const teclas = (e) => {
+      if (e.key === "ArrowRight") { setSel((s) => Math.min(n - 1, s < 0 ? 0 : s + 1)); e.preventDefault(); }
+      else if (e.key === "ArrowLeft") { setSel((s) => Math.max(0, s < 0 ? n - 1 : s - 1)); e.preventDefault(); }
+      else if (e.key === "Escape") setSel(-1);
+    };
+    return h("div", { className: "est-graf" },
+      h("div", { className: "est-lienzo", ref, tabIndex: 0, role: "group", "aria-label": nombre + ". Usa las flechas para ver cada valor.",
+          onKeyDown: teclas, onFocus: () => setSel((s) => s < 0 ? n - 1 : s), onBlur: () => setSel(-1),
+          onPointerLeave: (e) => { if (e.pointerType === "mouse") setSel(-1); } },
+        h("svg", { width: W, height: H, viewBox: "0 0 " + W + " " + H, "aria-hidden": "true" },
+          ticks.map((v) => h("g", { key: "t" + v },
+            h("line", { x1: IZQ, x2: W, y1: y(v), y2: y(v), className: "est-grid" }),
+            h("text", { x: IZQ - 6, y: y(v) + 4, className: "est-eje", textAnchor: "end" }, compacto(v)))),
+          vals.map((v, i) => h("path", { key: "c" + i, d: columna(v, i), className: "est-col" + (sel === i ? " sel" : "") })),
+          iMax >= 0 && h("text", { x: Math.min(W - 14, Math.max(IZQ + 14, centro(iMax))), y: y(max) - 5, className: "est-val", textAnchor: "middle" }, nf(max)),
+          datos.map((d, i) => (i % cada === 0) && h("text", { key: "e" + i, x: Math.min(W - 16, Math.max(IZQ + 10, centro(i))), y: H - 5, className: "est-eje", textAnchor: "middle" }, eje(d, i))),
+          datos.map((d, i) => h("rect", { key: "h" + i, x: IZQ + slot * i, y: 0, width: slot, height: H - ABA, fill: "transparent",
+            onPointerEnter: () => setSel(i), onClick: () => setSel(i) }))),
+        tip && h("div", { className: "est-tip" + (centro(sel) > W / 2 ? " izq" : " der"), style: { left: (centro(sel) + (centro(sel) > W / 2 ? -bw / 2 - 6 : bw / 2 + 6)) + "px" } },
+          tip.map((x, k) => h("div", { key: k, className: k ? "" : "t" }, x)))),
+      h("button", { type: "button", className: "est-ver", onClick: () => setTabla(!tabla) }, tabla ? "Ocultar números" : "Ver números"),
+      tabla && h(TablaNum, { cols, filas: datos }));
+  };
+  // Día de la semana × hora: cuánto se usa el portal en cada momento de la semana (más oscuro = más minutos de uso)
+  var ESCALA_EST = ["#f1f5f9", "#dbe6fe", "#b4cbfb", "#7da5f5", "#4479ea", "#1d4ed8"];
+  var MapaHoras = ({ celdas }) => {
+    const ref = useRef(null), W = useAncho(ref, 330);
+    const [sel, setSel] = useState(null), [tabla, setTabla] = useState(false);
+    const m = {};
+    (celdas || []).forEach((c) => { m[c.dow + "-" + c.hora] = c; });
+    const porMin = (celdas || []).some((c) => c.minutos > 0), val = (c) => c ? Number(porMin ? c.minutos : c.acciones) || 0 : 0;
+    const max = Math.max(0, ...(celdas || []).map(val));
+    const nivel = (v) => v <= 0 || !max ? 0 : Math.min(5, Math.ceil(v / max * 5));
+    const IZQ = 32, cw = Math.max(6, (W - IZQ) / 24), ch = 22, H = ch * 7 + 18;
+    const info = sel ? m[sel.dow + "-" + sel.hora] : null;
+    const filas = [];
+    for (let d = 1; d <= 7; d++) { const f = { dia: DIA_SEM[d] }; let algo = false; for (let hh = 0; hh < 24; hh++) { const v = val(m[d + "-" + hh]); f[hh] = v; if (v) algo = true; } if (algo) filas.push(f); }
+    return h("div", { className: "est-graf est-mapa" },
+      h("div", { className: "est-lienzo", ref, onPointerLeave: (e) => { if (e.pointerType === "mouse") setSel(null); } },
+        h("svg", { width: W, height: H, viewBox: "0 0 " + W + " " + H, role: "img", "aria-label": "Uso del portal por día de la semana y hora" },
+          [1, 2, 3, 4, 5, 6, 7].map((d) => h("text", { key: "d" + d, x: 0, y: (d - 1) * ch + ch / 2 + 4, className: "est-eje" }, DIA_SEM[d].slice(0, 3).toLowerCase()))
+            .concat([0, 3, 6, 9, 12, 15, 18, 21].map((hh) => h("text", { key: "h" + hh, x: IZQ + hh * cw + 1, y: H - 3, className: "est-eje" }, hh + "h"))),
+          [1, 2, 3, 4, 5, 6, 7].map((d) => Array.from({ length: 24 }, (x, hh) => {
+            const c = m[d + "-" + hh], v = val(c), activa = sel && sel.dow === d && sel.hora === hh;
+            return h("rect", { key: d + "-" + hh, x: IZQ + hh * cw + 1, y: (d - 1) * ch + 1, width: Math.max(2, cw - 2), height: ch - 2, rx: 3,
+              fill: ESCALA_EST[nivel(v)], className: "est-celda" + (activa ? " sel" : ""),
+              onPointerEnter: () => setSel({ dow: d, hora: hh }), onClick: () => setSel({ dow: d, hora: hh }) });
+          }))),
+        sel && h("div", { className: "est-tip", style: { left: Math.min(W - 90, Math.max(90, IZQ + sel.hora * cw + cw / 2)) + "px", top: Math.max(0, (sel.dow - 1) * ch - 44) + "px" } },
+          h("div", { className: "t" }, DIA_SEM[sel.dow] + " de " + sel.hora + " a " + (sel.hora + 1) + " h"),
+          h("div", null, nf(info ? info.minutos : 0) + " min de uso · " + nf(info ? info.acciones : 0) + " acciones"))),
+      h("div", { className: "est-leyenda" }, h("span", null, "Menos"), ESCALA_EST.map((c) => h("i", { key: c, style: { background: c } })), h("span", null, "Más"),
+        h("span", { className: "est-leyenda-nota" }, porMin ? "minutos de uso" : "acciones")),
+      h("button", { type: "button", className: "est-ver", onClick: () => setTabla(!tabla) }, tabla ? "Ocultar números" : "Ver números"),
+      tabla && h(TablaNum, { cols: [["Día", (f) => f.dia]].concat(Array.from({ length: 24 }, (x, hh) => [hh + "h", (f) => f[hh] || ""])), filas }));
+  };
+  // Barras ordenadas: una fila por cosa (lugar, equipo, producto…), la barra proporcional y el número al final
+  var Barras = ({ filas, vacio }) => {
+    if (!filas || !filas.length) return h("div", { className: "sim-empty" }, vacio || "Sin datos en el período.");
+    const max = Math.max(1, ...filas.map((f) => Number(f.v) || 0));
+    return h("div", { className: "est-barras" }, filas.map((f, i) => h("div", { key: i, className: "est-barra" },
+      h("span", { className: "est-bn" }, f.nombre, f.sub ? h("small", null, f.sub) : null),
+      h("span", { className: "est-bt", "aria-hidden": "true" }, h("i", { style: { width: (Number(f.v) > 0 ? Math.max(1.5, Number(f.v) / max * 100) : 0) + "%" } })),
+      h("strong", null, f.txt != null ? f.txt : nf(f.v)))));
+  };
+  var Delta = ({ v, a, periodo }) => {
+    if (a == null) return null;
+    const d = (Number(v) || 0) - (Number(a) || 0);
+    return h("span", { className: "est-delta " + (d > 0 ? "sube" : d < 0 ? "baja" : ""), title: "Comparado con " + periodo },
+      d > 0 ? "▲ " + nf(d) + " más" : d < 0 ? "▼ " + nf(-d) + " menos" : "igual");
+  };
+  var Seccion = ({ titulo, abierta, children, extra }) => {
+    const [ab, setAb] = useState(abierta !== false);
+    return h("div", { className: "est-sec" },
+      h("button", { type: "button", className: "sim-sect est-sec-cab", onClick: () => setAb(!ab), "aria-expanded": ab },
+        h("span", null, titulo, extra ? h("small", null, " · ", extra) : null), h("span", { className: "est-flecha", "aria-hidden": "true" }, ab ? "−" : "+")),
+      ab && children);
+  };
+  var PersonaEst = ({ p, alCambiar }) => {
+    const [ab, setAb] = useState(false), [ocupado, setOcupado] = useState(false), [err, setErr] = useState("");
+    const marcar = async () => {
+      setOcupado(true); setErr("");
+      try {
+        const { error } = await sb.rpc("admin_interno", { p_token: adminTok(), p_llave: p.llave, p_interno: !p.interno });
+        if (error) throw error;
+        alCambiar();
+      } catch (e) { setErr(e.message || "No se pudo cambiar"); }
+      setOcupado(false);
+    };
+    const dato = (n, uno, varios) => h("span", { className: n ? "" : "cero" }, nf(n), " ", n === 1 ? uno : varios);
+    const lugar = (l) => [l.ciudad, l.region && l.region !== l.ciudad ? l.region : "", l.pais && l.pais !== "PE" ? l.pais : ""].filter(Boolean).join(", ") || "Sin dato";
+    return h("div", { className: "est-persona" + (p.alerta ? " con-alerta" : "") },
+      h("button", { type: "button", className: "est-p-cab", onClick: () => setAb(!ab), "aria-expanded": ab },
+        h("span", { className: "est-p-nom" }, h("strong", null, nombreVisible(p.nombre)),
+          p.interno ? h("em", { className: "est-chip" }, "Interna") : null,
+          p.alerta ? h("em", { className: "est-chip " + p.alerta }, "⚠ ", p.alerta === "alta" ? "¿Cuenta compartida?" : "Revisar") : null),
+        h("small", null, ["última vez " + haceCuanto(p.ultima), nf(p.dias) + (p.dias === 1 ? " día" : " días"), nf(p.n_equipos) + (p.n_equipos === 1 ? " equipo" : " equipos")].join(" · ")),
+        h("span", { className: "act-datos" }, dato(p.sesiones, "sesión", "sesiones"), dato(p.minutos, "min", "min"), dato(p.fichas, "ficha", "fichas"),
+          dato(p.cotizaciones, "cotización", "cotizaciones"), dato(p.videos, "video", "videos"))),
+      ab && h("div", { className: "est-p-det" },
+        (p.motivos || []).length > 0 && h(React.Fragment, null, h("h5", null, "Por qué revisar"), h("ul", null, p.motivos.map((m, i) => h("li", { key: i }, conPor(m))))),
+        h("h5", null, "Equipos desde los que entró"),
+        (p.equipos || []).length ? h("ul", null, p.equipos.map((e, i) => h("li", { key: i }, conPor(e.huella) || "Sin dato",
+          h("small", null, " · ", nf(e.ingresos), e.ingresos === 1 ? " sesión" : " sesiones", " · hasta ", haceCuanto(e.hasta))))) : h("p", null, "Sin dato."),
+        h("h5", null, "Desde dónde (aproximado, por su conexión a internet)"),
+        (p.lugares || []).length ? h("ul", null, p.lugares.map((l, i) => h("li", { key: i }, lugar(l), l.isp ? h("small", null, " · ", l.isp) : null,
+          h("small", null, " · ", nf(l.veces), l.veces === 1 ? " vez" : " veces")))) : h("p", null, "Todavía sin dato: se anota desde el 21/11/2026, en cada visita."),
+        h("h5", null, "Más"),
+        h("ul", null,
+          p.depto ? h("li", null, "Registrada en ", nombrePropio(p.depto)) : null,
+          h("li", null, "Primera vez en el portal: ", p.primera ? fechaCorta(p.primera) : "—"),
+          h("li", null, nf(p.ingresos), p.ingresos === 1 ? " ingreso con DNI" : " ingresos con DNI", " · ", nf(p.busquedas), p.busquedas === 1 ? " búsqueda" : " búsquedas", " · ", nf(p.videos_vistos), p.videos_vistos === 1 ? " video visto" : " videos vistos"),
+          h("li", null, nf(p.n_ips), p.n_ips === 1 ? " conexión a internet distinta" : " conexiones a internet distintas")),
+        h("button", { type: "button", className: "est-boton", disabled: ocupado, onClick: marcar },
+          ocupado ? "Guardando…" : p.interno ? "Volver a contarla en las estadísticas" : "No contarla («Sin mí»): es mía o de prueba"),
+        err && h("div", { className: "info-banner red" }, h(AlertSvg, null), h("span", null, err))));
+  };
+  var EstadisticasAdmin = () => {
+    const [dias, setDias] = useState(7), [internos, setInternos] = useState(false), [vuelta, setVuelta] = useState(0);
+    const [d, setD] = useState(null), [cargando, setCargando] = useState(true), [msg, setMsg] = useState("");
+    const [metrica, setMetrica] = useState("personas"), [buscar, setBuscar] = useState(""), [verTodas, setVerTodas] = useState(false);
     useEffect(() => {
       if (!sb) return;
-      setD(null);
-      (async () => {
-        try {
-          const { data, error } = await sb.rpc("admin_actividad", { p_token: adminTok(), p_dias: dias });
-          if (error) throw error;
-          setD(data);
-        } catch (e) { setMsg(e.message || "No se pudo cargar"); }
-      })();
-    }, [dias]);
-    if (msg) return h("div", { className: "admin-body" }, h("div", { className: "info-banner red" }, h(AlertSvg, null), h("span", null, msg)));
-    if (!d) return h("div", { className: "admin-body" }, h("p", { className: "admin-note" }, "Cargando…"));
-    const res = d.resumen || [], t = d.totales || null;
-    const equipoDe = (a) => [a.dispositivo, EQUIPO_SO[a.so] || a.so, a.navegador].filter(Boolean).join(" \xB7 ");
-    const dato = (n, uno, varios) => h("span", { className: n ? "" : "cero" }, n || 0, " ", n === 1 ? uno : varios);
-    return h("div", { className: "admin-body" },
-      h("div", { className: "ev-tools" }, [1, 7, 30].map((n) => h("button", { key: n, className: `sim-chip ${dias === n ? "on" : ""}`, onClick: () => setDias(n) }, n === 1 ? "Hoy" : n + " d\xEDas"))),
-      t && h("div", { className: "act-totales" }, [["Personas", t.personas], ["Visitas", t.visitas], ["Minutos de uso", t.minutos], ["Fichas abiertas", t.fichas], ["Cotizaciones enviadas", t.cotizaciones], ["Videos enviados", t.videos]].map((x) => h("div", { key: x[0], className: "act-total" }, h("strong", null, x[1] || 0), h("span", null, x[0])))),
-      h("div", { className: "sim-sect" }, "Por asesor"),
-      res.map((a) => h("div", { key: a.celular, className: "act-persona" },
-        h("strong", null, a.nombre || a.celular),
-        h("small", null, [equipoDe(a), a.ultima ? "\xFAltima vez: " + fechaCorta(a.ultima) : ""].filter(Boolean).join(" \xB7 ")),
-        h("div", { className: "act-datos" }, dato(a.visitas != null ? a.visitas : a.sesiones, "visita", "visitas"), dato(a.minutos, "min", "min"), dato(a.fichas != null ? a.fichas : a.acciones, a.fichas != null ? "ficha" : "acci\xF3n", a.fichas != null ? "fichas" : "acciones"), a.cotizaciones != null && dato(a.cotizaciones, "cotizaci\xF3n", "cotizaciones"), a.videos != null && dato(a.videos, "video", "videos")))),
-      !res.length && h("div", { className: "sim-empty" }, "Sin actividad en el per\xEDodo."),
-      (d.por_dia || []).length > 1 && h(React.Fragment, null,
-        h("div", { className: "sim-sect" }, "Por d\xEDa"),
-        h("div", { className: "sim-card" }, d.por_dia.map((x) => h("div", { key: x.dia, className: "sim-line" },
-          h("span", { className: "sim-name" }, new Date(x.dia + "T12:00:00-05:00").toLocaleDateString("es-PE", { weekday: "short", day: "2-digit", month: "short", timeZone: "America/Lima" })),
-          h("span", { className: "act-dia" }, x.personas, x.personas === 1 ? " persona" : " personas", " \xB7 ", x.minutos, " min \xB7 ", x.fichas, " fichas \xB7 ", x.cotizaciones, " cotiz. \xB7 ", x.videos, " videos"))))),
-      (d.equipos || []).length > 0 && h(React.Fragment, null,
-        h("div", { className: "sim-sect" }, "Desde qu\xE9 equipo entran"),
-        h("div", { className: "sim-card" }, d.equipos.map((x, i) => h("div", { key: i, className: "sim-line" },
-          h("span", { className: "sim-name" }, EQUIPO_SO[x.so] || x.so), h("strong", null, x.n, x.n === 1 ? " persona" : " personas"))))),
-      (d.top_productos || []).length > 0 && h(React.Fragment, null,
-        h("div", { className: "sim-sect" }, "Productos m\xE1s abiertos"),
-        h("div", { className: "sim-card" }, d.top_productos.map((x, i) => h("div", { key: i, className: "sim-line" },
-          h("span", { className: "sim-name" }, x.producto), h("strong", null, x.n))))),
-      (d.busquedas || []).length > 0 && h(React.Fragment, null,
-        h("div", { className: "sim-sect" }, "Qu\xE9 buscan"),
-        h("div", { className: "sim-card" }, d.busquedas.map((x, i) => h("div", { key: i, className: "sim-line" },
-          h("span", { className: "sim-name" }, x.texto, x.sin ? h("small", null, h("br"), "sin resultados ", x.sin, x.sin === 1 ? " vez" : " veces") : null), h("strong", null, x.n))))),
-      (d.por_tipo || []).length > 0 && h(React.Fragment, null,
-        h("div", { className: "sim-sect" }, "Qu\xE9 usan"),
-        h("div", { className: "sim-card" }, d.por_tipo.map((x, i) => h("div", { key: i, className: "sim-line" },
-          h("span", { className: "sim-name" }, ROTULO_TIPO[x.tipo] || x.tipo.replace(/_/g, " ")), h("strong", null, x.n))))),
-      (d.fallas || []).length > 0 && h(React.Fragment, null,
-        h("div", { className: "sim-sect" }, "Fallas al compartir y errores"),
-        h("div", { className: "sim-card" }, d.fallas.map((e, i) => h("div", { key: i, className: "sim-line" },
-          h("span", { className: "sim-name" }, h("strong", null, e.nombre || e.celular), " ", describirEvento(e),
-            h("small", null, h("br"), [EQUIPO_SO[e.so] || e.so, e.navegador, e.detalle && e.detalle.paso, e.detalle && e.detalle.error].filter(Boolean).join(" \xB7 "))),
-          h("span", { className: "act-hora" }, fechaCorta(e.cuando)))))),
-      h("div", { className: "sim-sect" }, "\xDAltimos movimientos"),
-      h("div", { className: "sim-card" }, (d.ultimos || []).map((e, i) => h("div", { key: i, className: "sim-line" },
-        h("span", { className: "sim-name" }, h("strong", null, e.nombre || e.celular), " ", describirEvento(e)),
-        h("span", { className: "act-hora" }, fechaCorta(e.cuando))))));
+      let vivo = true;
+      setCargando(true); setMsg("");
+      sb.rpc("admin_estadisticas", { p_token: adminTok(), p_op: { dias, internos } }).then(({ data, error }) => {
+        if (!vivo) return;
+        if (error) setMsg(error.message || "No se pudo cargar"); else setD(data);
+        setCargando(false);
+      }, (e) => { if (vivo) { setMsg((e && e.message) || "No se pudo cargar"); setCargando(false); } });
+      return () => { vivo = false; };
+    }, [dias, internos, vuelta]);
+    const periodo = dias === 1 ? "hoy" : dias === 0 ? "desde el inicio" : "los últimos " + dias + " días";
+    const antes = dias === 1 ? "ayer a esta hora" : dias === 0 ? "" : "los " + dias + " días anteriores, hasta esta misma hora";
+    const filtros = h("div", { className: "est-filtros" },
+      [[1, "Hoy"], [7, "7 días"], [30, "30 días"], [90, "90 días"], [0, "Todo"]].map((x) => h("button", { key: x[0], type: "button", className: "sim-chip" + (dias === x[0] ? " on" : ""), "aria-pressed": dias === x[0], onClick: () => setDias(x[0]) }, x[1])),
+      h("span", { className: "est-sep", "aria-hidden": "true" }),
+      h("button", { type: "button", className: "sim-chip est-sinmi" + (!internos ? " on" : ""), "aria-pressed": !internos, onClick: () => setInternos(!internos),
+        title: "Deja fuera las cuentas internas (la tuya y las de prueba)" }, !internos ? "✓ Sin mí" : "Sin mí"),
+      h("button", { type: "button", className: "sim-chip", onClick: () => setVuelta((v) => v + 1) }, cargando ? "Cargando…" : "Actualizar"));
+    if (msg && !d) return h("div", { className: "admin-body" }, filtros, h("div", { className: "info-banner red" }, h(AlertSvg, null), h("span", null, msg)));
+    if (!d) return h("div", { className: "admin-body" }, filtros, h("p", { className: "admin-note" }, "Cargando…"));
+    const t = d.totales || {}, a = d.anterior || null, porDia = d.por_dia || [], personas = d.personas || [];
+    const alertas = personas.filter((p) => p.alerta);
+    const total = Number(d.equipo_total) || 0, pctEquipo = total ? Math.round((t.personas || 0) / total * 1000) / 10 : 0;
+    const envV = (d.envios && d.envios.video) || {}, envC = (d.envios && d.envios.cotizacion) || {}, emb = d.embudo || {};
+    const METRICAS = { personas: ["Personas", "personas"], sesiones: ["Sesiones", "sesiones"], minutos: ["Minutos", "min de uso"], fichas: ["Fichas", "fichas abiertas"], envios: ["Envíos", "envíos"] };
+    const valorDia = (x) => metrica === "envios" ? (x.videos || 0) + (x.cotizaciones || 0) : x[metrica] || 0;
+    const filtradas = buscar.trim() ? personas.filter((p) => (p.nombre || "").toLowerCase().indexOf(buscar.trim().toLowerCase()) >= 0) : personas;
+    const mostrar = verTodas || buscar.trim() ? filtradas : filtradas.slice(0, 25);
+    const csv = () => {
+      const filas = [["Nombre", "Registrada en", "Primera vez", "Última vez", "Días activos", "Sesiones", "Minutos", "Fichas", "Cotizaciones enviadas", "Videos enviados", "Búsquedas", "Equipos", "Conexiones", "Alerta", "Motivos", "Equipos (detalle)", "Lugares (aprox.)"]]
+        .concat(personas.map((p) => [nombreVisible(p.nombre), p.depto ? nombrePropio(p.depto) : "", p.primera ? fechaCorta(p.primera) : "", p.ultima ? fechaCorta(p.ultima) : "", p.dias, p.sesiones, p.minutos, p.fichas, p.cotizaciones, p.videos,
+          p.busquedas, p.n_equipos, p.n_ips, p.alerta || "", (p.motivos || []).join(" / "), (p.equipos || []).map((e) => e.huella).join(" / "),
+          (p.lugares || []).map((l) => [l.ciudad, l.region].filter(Boolean).join(", ")).join(" / ")]));
+      const texto = String.fromCharCode(0xFEFF) + filas.map((f) => f.map((x) => '"' + String(x == null ? "" : x).replace(/"/g, '""') + '"').join(";")).join("\r\n");
+      const url = URL.createObjectURL(new Blob([texto], { type: "text/csv;charset=utf-8" })), el = document.createElement("a");
+      el.href = url; el.download = "estadisticas-portal-" + (dias || "todo") + "d.csv"; el.style.display = "none";
+      document.body.appendChild(el); el.click();
+      setTimeout(() => { el.remove(); URL.revokeObjectURL(url); }, 4e3);
+    };
+    const filaEnvio = (n, nombre, sub) => ({ nombre, sub, v: n || 0 });
+    return h("div", { className: "admin-body est" + (cargando ? " est-cargando" : "") },
+      filtros,
+      h("p", { className: "est-nota" }, (d.excluidos || []).length ? "Sin contar: " + d.excluidos.map(nombreVisible).join(", ") + "." : "Contando todas las cuentas, también las internas.",
+        " Datos de ", periodo, ". Actualizado ", haceCuanto(d.actualizado), "."),
+      msg && h("div", { className: "info-banner red" }, h(AlertSvg, null), h("span", null, msg)),
+      h("div", { className: "est-resumen" },
+        h("p", null, h("strong", null, nf(t.personas), t.personas === 1 ? " persona usó" : " personas usaron"), " el portal ", periodo,
+          total ? [": el ", h("strong", { key: "p" }, String(pctEquipo).replace(".", ",") + " %"), " del equipo (", nf(total), " personas con DNI)."] : ".",
+          t.nuevas ? [" ", nf(t.nuevas), t.nuevas === 1 ? " entró por primera vez." : " entraron por primera vez."] : null),
+        h("div", { className: "est-medidor", role: "img", "aria-label": pctEquipo + " % del equipo" }, h("i", { style: { width: Math.min(100, Math.max(pctEquipo > 0 ? 1 : 0, pctEquipo)) + "%" } })),
+        h("p", { className: "est-nota" }, "Alguna vez lo usaron ", nf(d.usaron_alguna_vez), total ? " de " + nf(total) : "", ".")),
+      h("div", { className: "est-cifras" }, [
+        ["Personas", t.personas, a && a.personas], ["Sesiones de uso", t.sesiones, a && a.sesiones], ["Minutos de uso", t.minutos, a && a.minutos], ["Fichas abiertas", t.fichas, a && a.fichas],
+        ["Cotizaciones enviadas", t.cotizaciones, a && a.cotizaciones], ["Videos enviados", t.videos, a && a.videos], ["Búsquedas", t.busquedas, a && a.busquedas, t.sin_resultado ? nf(t.sin_resultado) + " sin resultado" : ""],
+        ["Videos vistos", t.videos_vistos, null, t.tutoriales ? nf(t.tutoriales) + (t.tutoriales === 1 ? " tutorial abierto" : " tutoriales abiertos") : ""]
+      ].map((x) => h("div", { key: x[0], className: "est-cifra" }, h("strong", null, nf(x[1])), h("span", null, x[0]),
+        a && x[2] != null ? h(Delta, { v: x[1], a: x[2], periodo: antes }) : null, x[3] ? h("small", null, x[3]) : null))),
+      a && h("p", { className: "est-nota" }, "▲▼ comparado con ", antes, "."),
+      h(Seccion, { titulo: "¿Cuentas compartidas?", extra: alertas.length ? nf(alertas.length) + (alertas.length === 1 ? " para revisar" : " para revisar") : "ninguna señal" },
+        alertas.length ? h("div", { className: "est-alertas" }, alertas.map((p) => h("div", { key: p.llave, className: "est-alerta " + p.alerta },
+          h("strong", null, "⚠ ", nombreVisible(p.nombre)), h("em", { className: "est-chip " + p.alerta }, p.alerta === "alta" ? "Alta" : "Revisar"),
+          h("ul", null, (p.motivos || []).map((m, i) => h("li", { key: i }, conPor(m)))))))
+          : h("div", { className: "sim-empty" }, "Nadie usó su cuenta en dos celulares a la vez ni desde lugares distintos el mismo día."),
+        h("p", { className: "est-nota" }, "Señales: la misma cuenta activa en dos equipos en los mismos 10 minutos (más grave si son dos celulares), desde dos ciudades el mismo día en equipos distintos, o desde 3 equipos o más. La ubicación es aproximada (sale de la conexión a internet: con datos móviles a veces marca Lima). Toca a la persona, más abajo, para ver sus equipos y lugares.")),
+      h(Seccion, { titulo: "Uso por día", extra: METRICAS[metrica][0].toLowerCase() },
+        h("div", { className: "est-filtros chico" }, Object.keys(METRICAS).map((k) => h("button", { key: k, type: "button", className: "sim-chip" + (metrica === k ? " on" : ""), "aria-pressed": metrica === k, onClick: () => setMetrica(k) }, METRICAS[k][0]))),
+        porDia.length ? h(Columnas, { datos: porDia, valor: valorDia, nombre: "Uso por día: " + METRICAS[metrica][0],
+          eje: (x) => diaCorto(x.dia), detalle: (x) => [diaLargo(x.dia), nf(x.personas) + (x.personas === 1 ? " persona" : " personas") + (x.nuevas ? " (" + nf(x.nuevas) + (x.nuevas === 1 ? " nueva)" : " nuevas)") : ""),
+            nf(x.sesiones) + " sesiones · " + nf(x.minutos) + " min", nf(x.fichas) + " fichas · " + nf(x.busquedas) + " búsquedas", nf(x.cotizaciones) + " cotizaciones · " + nf(x.videos) + " videos"],
+          cols: [["Día", (x) => diaCorto(x.dia)], ["Personas", (x) => nf(x.personas)], ["Nuevas", (x) => nf(x.nuevas)], ["Sesiones", (x) => nf(x.sesiones)], ["Min", (x) => nf(x.minutos)],
+            ["Fichas", (x) => nf(x.fichas)], ["Cotiz.", (x) => nf(x.cotizaciones)], ["Videos", (x) => nf(x.videos)], ["Búsq.", (x) => nf(x.busquedas)]] }) : null),
+      h(Seccion, { titulo: "Horario", extra: "a qué hora usan el portal" },
+        h(Columnas, { datos: d.por_hora || [], valor: (x) => x.minutos || x.acciones || 0, nombre: "Minutos de uso por hora del día", alto: 130,
+          eje: (x) => x.hora + "h", detalle: (x) => ["De " + x.hora + " a " + (x.hora + 1) + " h", nf(x.minutos) + " min de uso", nf(x.acciones) + " acciones · " + nf(x.personas) + (x.personas === 1 ? " persona" : " personas")],
+          cols: [["Hora", (x) => x.hora + " a " + (x.hora + 1) + " h"], ["Min de uso", (x) => nf(x.minutos)], ["Acciones", (x) => nf(x.acciones)], ["Personas", (x) => nf(x.personas)]] }),
+        h("p", { className: "est-nota" }, "Día de la semana y hora (más oscuro, más uso):"),
+        h(MapaHoras, { celdas: d.dia_hora || [] })),
+      (d.por_semana || []).length > 0 && h(Seccion, { titulo: "Por semana", extra: "nuevas y las que vuelven" },
+        h("div", { className: "sim-card" }, h(TablaNum, { filas: d.por_semana, cols: [["Semana", (x) => diaCorto(x.semana)], ["Personas", (x) => nf(x.personas)],
+          ["Nuevas", (x) => nf(x.nuevas)], ["Volvieron", (x) => nf(x.volvieron)], ["Min", (x) => nf(x.minutos)]] }))),
+      h(Seccion, { titulo: "Envíos por WhatsApp", extra: nf((envV.salieron || 0) + (envC.salieron || 0)) + " salieron" },
+        h("div", { className: "est-dos" },
+          h("div", { className: "sim-card" }, h("h4", { className: "est-sub" }, "Videos: ", nf(envV.salieron), envV.salieron === 1 ? " salió" : " salieron"),
+            h(Barras, { filas: [filaEnvio(envV.enviados, "Enviados", "el celular confirmó"), filaEnvio(envV.probables, "Probables", "se abrió WhatsApp y la página no supo más"),
+              filaEnvio(envV.enlace, "Por enlace", "en vez del archivo"), filaEnvio(envV.cancelados, "Cancelados"), filaEnvio(envV.otro_toque, "Pidieron otro toque", "el video demoró en prepararse"),
+              filaEnvio(envV.cerro_antes, "Cerró la ficha antes"), filaEnvio(envV.fallas, "Fallas")] }),
+            envV.mb_prom ? h("p", { className: "est-nota" }, "En promedio ", String(envV.mb_prom).replace(".", ","), " MB y ", String(envV.seg_prom || 0).replace(".", ","), " s en prepararse.") : null),
+          h("div", { className: "sim-card" }, h("h4", { className: "est-sub" }, "Cotizaciones: ", nf(envC.salieron), envC.salieron === 1 ? " salió" : " salieron",
+            envC.autocompra ? h("small", null, " (" + nf(envC.autocompra) + " de autocompra)") : null),
+            h(Barras, { filas: [filaEnvio(envC.enviados, "Enviadas", "el celular confirmó"), filaEnvio(envC.probables, "Probables", "se abrió WhatsApp y la página no supo más"),
+              filaEnvio(envC.cancelados, "Canceladas"), filaEnvio(envC.otro_toque, "Pidieron otro toque"), filaEnvio(envC.descargas, "Descargadas", "el navegador no comparte"), filaEnvio(envC.fallas, "Fallas")] }))),
+        h("p", { className: "est-nota" }, "Desde el 21/11/2026 cada envío se anota en dos tiempos: al abrir WhatsApp y al volver. Si el celular cierra la página mientras se envía, queda como «probable» (antes no quedaba nada).")),
+      h(Seccion, { titulo: "Embudo", extra: "de abrir el portal a enviar" },
+        h("div", { className: "sim-card" }, h(Barras, { filas: [
+          { nombre: "Usaron el portal", v: emb.activas, txt: nf(emb.activas) },
+          { nombre: "Abrieron una ficha", v: emb.abrieron_ficha, txt: nf(emb.abrieron_ficha) + " · " + (emb.activas ? Math.round(emb.abrieron_ficha / emb.activas * 100) : 0) + " %" },
+          { nombre: "Intentaron compartir", sub: "cotización o video", v: emb.intentaron, txt: nf(emb.intentaron) + " · " + (emb.activas ? Math.round(emb.intentaron / emb.activas * 100) : 0) + " %" },
+          { nombre: "Enviaron algo", v: emb.enviaron, txt: nf(emb.enviaron) + " · " + (emb.activas ? Math.round(emb.enviaron / emb.activas * 100) : 0) + " %" }] }),
+          h("p", { className: "est-nota" }, nf(emb.fichas), " fichas abiertas → ", nf(emb.intentos), " intentos de compartir → ", nf(emb.salieron), " envíos."))),
+      h(Seccion, { titulo: "Personas", extra: nf(personas.length) },
+        personas.length > 6 && h("input", { className: "est-buscar", type: "search", value: buscar, placeholder: "Buscar por nombre", onChange: (e) => setBuscar(e.target.value), "aria-label": "Buscar persona" }),
+        mostrar.map((p) => h(PersonaEst, { key: p.llave, p, alCambiar: () => setVuelta((v) => v + 1) })),
+        !filtradas.length && h("div", { className: "sim-empty" }, personas.length ? "Nadie con ese nombre." : "Sin actividad en el período."),
+        !verTodas && !buscar.trim() && filtradas.length > 25 && h("button", { type: "button", className: "est-boton", onClick: () => setVerTodas(true) }, "Ver las " + nf(filtradas.length)),
+        personas.length > 0 && h("button", { type: "button", className: "est-boton", onClick: csv }, "Descargar en Excel (CSV)")),
+      h(Seccion, { titulo: "Desde dónde entran", extra: "aproximado" },
+        h(Barras, { filas: (d.lugares || []).map((l) => ({ nombre: [l.ciudad, l.region && l.region !== l.ciudad ? l.region : ""].filter(Boolean).join(", ") || "Sin dato", sub: l.pais && l.pais !== "PE" ? l.pais : "",
+          v: l.personas, txt: nf(l.personas) + (l.personas === 1 ? " persona" : " personas") })), vacio: "Todavía sin datos: la ubicación se anota desde el 21/11/2026, en cada visita." }),
+        (d.operadores || []).length > 0 && h(React.Fragment, null, h("h4", { className: "est-sub" }, "Por operador de internet"),
+          h(Barras, { filas: d.operadores.map((o) => ({ nombre: o.isp, v: o.personas, txt: nf(o.personas) + (o.personas === 1 ? " persona" : " personas") })) })),
+        h("p", { className: "est-nota" }, "Sale de la conexión a internet (sin GPS ni permisos): es la ciudad de la red, no la casa de la persona. Con datos móviles a veces marca Lima.")),
+      h(Seccion, { titulo: "Equipos", extra: "celular, sistema y navegador" },
+        h("div", { className: "est-dos" },
+          h("div", { className: "sim-card" }, h("h4", { className: "est-sub" }, "Sistema"), h(Barras, { filas: ((d.equipos || {}).so || []).map((x) => ({ nombre: x.v, v: x.personas, txt: nf(x.personas) })) })),
+          h("div", { className: "sim-card" }, h("h4", { className: "est-sub" }, "Tipo y navegador"), h(Barras, { filas: ((d.equipos || {}).tipo || []).concat((d.equipos || {}).navegador || []).map((x) => ({ nombre: x.v, v: x.personas, txt: nf(x.personas) })) })),
+          ((d.equipos || {}).modelo || []).length > 0 && h("div", { className: "sim-card" }, h("h4", { className: "est-sub" }, "Modelo (Android)"), h(Barras, { filas: d.equipos.modelo.map((x) => ({ nombre: x.v, v: x.personas, txt: nf(x.personas) })) })),
+          h("div", { className: "sim-card" }, h("h4", { className: "est-sub" }, "Tamaño de pantalla"), h(Barras, { filas: ((d.equipos || {}).pantalla || []).map((x) => ({ nombre: x.v.replace("x", " × "), v: x.personas, txt: nf(x.personas) })) }))),
+        h("p", { className: "est-nota" }, "Número de personas en cada caso (una persona con dos equipos cuenta en los dos).")),
+      h(Seccion, { titulo: "Qué miran", extra: "productos, listas y búsquedas" },
+        h("div", { className: "est-dos" },
+          h("div", { className: "sim-card" }, h("h4", { className: "est-sub" }, "Productos más abiertos"),
+            h(Barras, { filas: ((d.contenido || {}).productos || []).map((x) => ({ nombre: x.nombre || x.codigo, sub: [x.codigo, x.personas ? nf(x.personas) + (x.personas === 1 ? " persona" : " personas") : "", x.cotizaciones ? nf(x.cotizaciones) + " cotiz." : "", x.videos ? nf(x.videos) + (x.videos === 1 ? " video" : " videos") : ""].filter(Boolean).join(" · "), v: x.fichas })) })),
+          h("div", { className: "sim-card" }, h("h4", { className: "est-sub" }, "Listas"),
+            h(Barras, { filas: ((d.contenido || {}).listas || []).map((x) => ({ nombre: listaVisible(x.lista), sub: nf(x.personas) + (x.personas === 1 ? " persona" : " personas"), v: x.veces })) }),
+            h("h4", { className: "est-sub" }, "Videos más vistos"),
+            h(Barras, { filas: ((d.contenido || {}).videos_vistos || []).map((x) => ({ nombre: x.nombre || x.codigo, sub: nf(x.personas) + (x.personas === 1 ? " persona" : " personas"), v: x.veces })), vacio: "Nadie vio videos en el período." })),
+          h("div", { className: "sim-card" }, h("h4", { className: "est-sub" }, "Qué buscan"),
+            h(Barras, { filas: ((d.contenido || {}).busquedas || []).map((x) => ({ nombre: "«" + x.texto + "»", sub: x.sin ? (x.sin === x.veces ? "no encontró nada" : nf(x.sin) + " veces sin resultado") : "", v: x.veces })), vacio: "Nadie buscó en el período." })))),
+      ((d.fallas || []).length > 0 || (d.errores || []).length > 0) && h(Seccion, { titulo: "Fallas y errores", extra: nf((d.fallas || []).length + (d.errores || []).length) },
+        (d.fallas || []).length > 0 && h("div", { className: "sim-card" }, d.fallas.map((e, i) => h("div", { key: i, className: "sim-line" },
+          h("span", { className: "sim-name" }, h("strong", null, nombreVisible(e.nombre)), " ", describirEvento({ tipo: e.tipo, detalle: e.detalle || {} }),
+            h("small", null, h("br"), [conPor(e.equipo), e.detalle && e.detalle.paso, e.detalle && e.detalle.error].filter(Boolean).join(" · "))),
+          h("span", { className: "act-hora" }, fechaCorta(e.cuando))))),
+        (d.errores || []).length > 0 && h(React.Fragment, null, h("h4", { className: "est-sub" }, "Errores de la página en los equipos"),
+          h("div", { className: "sim-card" }, d.errores.map((e, i) => h("div", { key: i, className: "sim-line" },
+            h("span", { className: "sim-name" }, e.msg, h("small", null, h("br"), nf(e.personas), e.personas === 1 ? " persona" : " personas", " · última ", fechaCorta(e.ultima))),
+            h("strong", null, nf(e.veces))))))),
+      h(Seccion, { titulo: "Ya no entran", extra: "hace más de 7 días", abierta: false },
+        (d.inactivas || []).length ? h("div", { className: "sim-card" }, d.inactivas.map((x, i) => h("div", { key: i, className: "sim-line" },
+          h("span", { className: "sim-name" }, nombreVisible(x.nombre)), h("span", { className: "act-hora" }, fechaCorta(x.ultima)))))
+          : h("div", { className: "sim-empty" }, "Todas las que usaron el portal entraron en los últimos 7 días."),
+        total ? h("p", { className: "est-nota" }, "Nunca entraron: ", nf(Math.max(0, total - (d.usaron_alguna_vez || 0))), " de ", nf(total), " personas del equipo con DNI.") : null),
+      h(Seccion, { titulo: "Últimos movimientos", abierta: false },
+        h("div", { className: "sim-card" }, (d.ultimos || []).map((e, i) => h("div", { key: i, className: "sim-line" },
+          h("span", { className: "sim-name" }, h("strong", null, nombreVisible(e.nombre)), " ", describirEvento(e)),
+          h("span", { className: "act-hora" }, fechaCorta(e.cuando)))))));
   };
   var AdminPanel = ({ open, config, setConfig, saveState, sbReady: sbReady2, productos, listas, onSaveNow, onClose }) => {
     const [isAdmin, setIsAdmin] = useState(false);
@@ -2337,7 +2675,7 @@
     return h("div", { className: `admin-overlay ${open ? "show" : ""}` }, h("div", { className: "admin-box" }, h("div", { className: "admin-head" }, h("div", { className: "admin-head-title" }, h(LockSvg, { s: 18 }), h("span", null, "Panel de Administraci\xF3n")), h("button", { className: "cart-close", onClick: onClose }, h(XSvg, { s: 18 }))), !isAdmin ? h("div", { className: "admin-login" }, h(LockSvg, { s: 34 }), h("h3", null, "Ingresa la clave"), h("input", { type: "password", value: pass, onChange: (e) => {
       setPass(e.target.value);
       setPassErr("");
-    }, onKeyDown: (e) => e.key === "Enter" && login(), placeholder: "Clave de administrador", autoFocus: true }), passErr && h("span", { className: "admin-login-err" }, passErr), h("button", { className: "admin-btn-main", onClick: login }, "Ingresar")) : h(React.Fragment, null, h("div", { className: "admin-tabs" }, h("button", { className: `admin-tab ${tab === "imagenes" ? "on" : ""}`, onClick: () => setTab("imagenes") }, "Im\xE1genes"), h("button", { className: `admin-tab ${tab === "videos" ? "on" : ""}`, onClick: () => setTab("videos") }, "Videos"), h("button", { className: `admin-tab ${tab === "bono" ? "on" : ""}`, onClick: () => setTab("bono") }, "Puntaje extra"), h("button", { className: `admin-tab ${tab === "premios" ? "on" : ""}`, onClick: () => setTab("premios") }, "Premios"), h("button", { className: `admin-tab ${tab === "sinonimos" ? "on" : ""}`, onClick: () => setTab("sinonimos") }, "B\xFAsqueda"), h("button", { className: `admin-tab ${tab === "asesores" ? "on" : ""}`, onClick: () => setTab("asesores") }, "Asesores"), h("button", { className: `admin-tab ${tab === "actividad" ? "on" : ""}`, onClick: () => setTab("actividad") }, "Actividad")), h("div", { className: "admin-body" }, !sbReady2 && h("div", { className: "info-banner orange", style: { marginBottom: 12 } }, h(AlertSvg, null), h("span", null, "Modo local: edita ", h("strong", null, "SUPABASE_URL"), " y ", h("strong", null, "SUPABASE_ANON_KEY"), " al inicio del archivo para que los cambios se publiquen a TODOS los visitantes. Por ahora se guardan solo en este equipo.")), tab === "imagenes" ? h(React.Fragment, null, h("p", { className: "admin-note" }, "Sube la ", h("strong", null, "foto"), " de cada producto (recomendado: asi sale bien en las capturas para compartir) o pega un link. Maximo 10 MB."), h("div", { className: "admin-lote" }, h("label", { className: `admin-upbtn lote ${lote.activo ? "busy" : ""}` }, lote.activo ? "Subiendo " + lote.hechas + " de " + lote.total + "\u2026" : "Subir muchas fotos de una vez", h("input", { type: "file", accept: "image/*", multiple: true, disabled: lote.activo, onChange: (e) => { subirLote(e.target.files); e.target.value = ""; } })), h("span", { className: "admin-lote-hint" }, "Elige todas las fotos juntas. Cada una se asigna sola al producto por el codigo que lleva en el nombre del archivo (ejemplo ", h("strong", null, "382000.webp"), ").")), lote.msg && h("div", { className: "info-banner blue", style: { marginBottom: 10 } }, h(InfoSvg, null), h("span", null, lote.msg)), upErr && h("div", { className: "info-banner red", style: { marginBottom: 10 } }, h(AlertSvg, null), h("span", null, upErr)), repMsg && h("div", { className: "info-banner blue", style: { marginBottom: 10 } }, h(InfoSvg, null), h("span", null, repMsg)), h("div", { className: "admin-catbar" }, filtros.map((c) => h("button", { key: c.key, className: `admin-catbtn ${catFilter === c.key ? "on" : ""}`, onClick: () => setCatFilter(c.key) }, c.label))), prods.map((p) => {
+    }, onKeyDown: (e) => e.key === "Enter" && login(), placeholder: "Clave de administrador", autoFocus: true }), passErr && h("span", { className: "admin-login-err" }, passErr), h("button", { className: "admin-btn-main", onClick: login }, "Ingresar")) : h(React.Fragment, null, h("div", { className: "admin-tabs" }, h("button", { className: `admin-tab ${tab === "imagenes" ? "on" : ""}`, onClick: () => setTab("imagenes") }, "Im\xE1genes"), h("button", { className: `admin-tab ${tab === "videos" ? "on" : ""}`, onClick: () => setTab("videos") }, "Videos"), h("button", { className: `admin-tab ${tab === "bono" ? "on" : ""}`, onClick: () => setTab("bono") }, "Puntaje extra"), h("button", { className: `admin-tab ${tab === "premios" ? "on" : ""}`, onClick: () => setTab("premios") }, "Premios"), h("button", { className: `admin-tab ${tab === "sinonimos" ? "on" : ""}`, onClick: () => setTab("sinonimos") }, "B\xFAsqueda"), h("button", { className: `admin-tab ${tab === "asesores" ? "on" : ""}`, onClick: () => setTab("asesores") }, "Asesores"), h("button", { className: `admin-tab ${tab === "actividad" ? "on" : ""}`, onClick: () => setTab("actividad") }, "Estad\xEDsticas")), h("div", { className: "admin-body" }, !sbReady2 && h("div", { className: "info-banner orange", style: { marginBottom: 12 } }, h(AlertSvg, null), h("span", null, "Modo local: edita ", h("strong", null, "SUPABASE_URL"), " y ", h("strong", null, "SUPABASE_ANON_KEY"), " al inicio del archivo para que los cambios se publiquen a TODOS los visitantes. Por ahora se guardan solo en este equipo.")), tab === "imagenes" ? h(React.Fragment, null, h("p", { className: "admin-note" }, "Sube la ", h("strong", null, "foto"), " de cada producto (recomendado: asi sale bien en las capturas para compartir) o pega un link. Maximo 10 MB."), h("div", { className: "admin-lote" }, h("label", { className: `admin-upbtn lote ${lote.activo ? "busy" : ""}` }, lote.activo ? "Subiendo " + lote.hechas + " de " + lote.total + "\u2026" : "Subir muchas fotos de una vez", h("input", { type: "file", accept: "image/*", multiple: true, disabled: lote.activo, onChange: (e) => { subirLote(e.target.files); e.target.value = ""; } })), h("span", { className: "admin-lote-hint" }, "Elige todas las fotos juntas. Cada una se asigna sola al producto por el codigo que lleva en el nombre del archivo (ejemplo ", h("strong", null, "382000.webp"), ").")), lote.msg && h("div", { className: "info-banner blue", style: { marginBottom: 10 } }, h(InfoSvg, null), h("span", null, lote.msg)), upErr && h("div", { className: "info-banner red", style: { marginBottom: 10 } }, h(AlertSvg, null), h("span", null, upErr)), repMsg && h("div", { className: "info-banner blue", style: { marginBottom: 10 } }, h(InfoSvg, null), h("span", null, repMsg)), h("div", { className: "admin-catbar" }, filtros.map((c) => h("button", { key: c.key, className: `admin-catbtn ${catFilter === c.key ? "on" : ""}`, onClick: () => setCatFilter(c.key) }, c.label))), prods.map((p) => {
       const cur = config.imagenes[p.codigo] || "";
       const up = uploadingCode === "img-" + p.codigo;
       return h("div", { key: p.codigo, className: "admin-imgrow" }, h("div", { className: "admin-imgthumb" }, cur || p.imagenBase ? h("img", { key: cur || p.imagenBase, src: cur || p.imagenBase, alt: "", onError: (e) => {
@@ -2356,7 +2694,7 @@
         onPickVideo(p.codigo, f);
         e.target.value = "";
       } })), cur && h("button", { className: "admin-rmbtn", onClick: () => setVideo(p.codigo, "") }, "Quitar")), h("input", { key: cur, type: "url", defaultValue: cur, placeholder: "o pega un link (YouTube / .mp4)", onBlur: (e) => setVideo(p.codigo, e.target.value.trim()), onKeyDown: (e) => e.key === "Enter" && e.target.blur() }), h("div", { className: "admin-msgrow" }, h("label", null, "Mensaje propio de este producto", h("textarea", { rows: 2, defaultValue: (config.mensajes && config.mensajes[p.codigo]) || "", placeholder: "Vac\xEDo = se usa el mensaje general de arriba", onBlur: (e) => setConfig((c) => { const m = { ...(c.mensajes || {}) }; const v = e.target.value.trim(); if (v) m[p.codigo] = v; else delete m[p.codigo]; return { ...c, mensajes: m }; }) })))));
-    })) : tab === "asesores" ? h(AsesoresAdmin, null) : tab === "actividad" ? h(ActividadAdmin, null) : tab === "sinonimos" ? h(SinonimosAdmin, { reglas: leerSinonimos(config), setConfig, productos }) : tab === "premios" ? h(React.Fragment, null, h("p", { className: "admin-note" }, "Configura los ", h("strong", null, "niveles de premio por puntaje"), ": el puntaje necesario, la cantidad de afiliados y el premio. Se muestran en la vista de Autocompra."), metasCfg.map((m, i) => h("div", { key: i, className: "admin-metarow" }, h("div", { className: "admin-metafields" }, h("label", null, "Puntaje", h("input", { type: "number", value: m.puntos, onChange: (e) => setMeta(i, "puntos", Number(e.target.value) || 0) })), h("label", null, "Afiliados", h("input", { type: "number", value: m.afiliados, onChange: (e) => setMeta(i, "afiliados", Number(e.target.value) || 0) })), h("button", { className: "admin-metadel", onClick: () => delMeta(i), title: "Quitar nivel" }, h(TrashSvg, null))), h("input", { className: "admin-metaprem", type: "text", value: m.premio, onChange: (e) => setMeta(i, "premio", e.target.value), placeholder: "Premio (ej. Cocina de Inducci\xF3n + ...)" }))), h("button", { className: "admin-btn-main", onClick: addMeta }, h(PlusSvg, { s: 14 }), " Agregar nivel de premio")) : h(React.Fragment, null, h("div", { className: "info-banner blue", style: { marginBottom: 12 } }, h(InfoSvg, null), h("span", null, "Aqu\xED arriba est\xE1 la ", h("strong", null, "regla fija de la primera semana"), ". Abajo cargas los puntajes extra que Rena Ware lanza de vez en cuando: si eliges ", h("strong", null, "una lista"), ", ese % se suma; si no eliges ninguna, reemplaza al de la semana cuando es mayor.")), h(BonoSemanaAdmin, { bs: leerBonoSemana(config), setConfig }), h("div", { className: "admin-bonoform" }, h("div", { className: "admin-bonofields" }, h("label", null, "Desde", h("input", { type: "date", value: bIni, min: hoyPET(), onChange: (e) => {
+    })) : tab === "asesores" ? h(AsesoresAdmin, null) : tab === "actividad" ? h(EstadisticasAdmin, null) : tab === "sinonimos" ? h(SinonimosAdmin, { reglas: leerSinonimos(config), setConfig, productos }) : tab === "premios" ? h(React.Fragment, null, h("p", { className: "admin-note" }, "Configura los ", h("strong", null, "niveles de premio por puntaje"), ": el puntaje necesario, la cantidad de afiliados y el premio. Se muestran en la vista de Autocompra."), metasCfg.map((m, i) => h("div", { key: i, className: "admin-metarow" }, h("div", { className: "admin-metafields" }, h("label", null, "Puntaje", h("input", { type: "number", value: m.puntos, onChange: (e) => setMeta(i, "puntos", Number(e.target.value) || 0) })), h("label", null, "Afiliados", h("input", { type: "number", value: m.afiliados, onChange: (e) => setMeta(i, "afiliados", Number(e.target.value) || 0) })), h("button", { className: "admin-metadel", onClick: () => delMeta(i), title: "Quitar nivel" }, h(TrashSvg, null))), h("input", { className: "admin-metaprem", type: "text", value: m.premio, onChange: (e) => setMeta(i, "premio", e.target.value), placeholder: "Premio (ej. Cocina de Inducci\xF3n + ...)" }))), h("button", { className: "admin-btn-main", onClick: addMeta }, h(PlusSvg, { s: 14 }), " Agregar nivel de premio")) : h(React.Fragment, null, h("div", { className: "info-banner blue", style: { marginBottom: 12 } }, h(InfoSvg, null), h("span", null, "Aqu\xED arriba est\xE1 la ", h("strong", null, "regla fija de la primera semana"), ". Abajo cargas los puntajes extra que Rena Ware lanza de vez en cuando: si eliges ", h("strong", null, "una lista"), ", ese % se suma; si no eliges ninguna, reemplaza al de la semana cuando es mayor.")), h(BonoSemanaAdmin, { bs: leerBonoSemana(config), setConfig }), h("div", { className: "admin-bonoform" }, h("div", { className: "admin-bonofields" }, h("label", null, "Desde", h("input", { type: "date", value: bIni, min: hoyPET(), onChange: (e) => {
       setBIni(e.target.value);
       setBErr("");
     } })), h("label", null, "Hasta", h("input", { type: "date", value: bFin, min: bIni || hoyPET(), onChange: (e) => {
@@ -3344,6 +3682,88 @@
         .lista-btn.esp.lst-compartir.on{background:var(--com);border-color:var(--com);color:#fff;box-shadow:0 6px 16px rgba(30,90,168,.36)}
         .lista-btn.esp.lst-compartir.on .lista-esp{color:var(--comAma)}
         .lista-btn.esp.lst-compartir.on .lista-esp b{background:var(--comAma);color:#7f1d1d}
+        /* ===== Estadísticas (21/11/2026): Admin → Estadísticas ===== */
+        .est-filtros{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:6px}
+        .est-filtros.chico{margin:2px 0 8px}
+        .est-filtros .sim-chip.on{border-color:var(--blue);background:var(--blueL);color:var(--blue)}
+        .est-sep{width:1px;height:22px;background:var(--border);margin:0 2px}
+        .est-nota{font-size:12.5px;color:var(--muted);margin:6px 2px 0;line-height:1.45}
+        .est.est-cargando>*:not(.est-filtros){opacity:.45;transition:opacity .2s}
+        .est-resumen{background:#fff;border:1px solid var(--border);border-radius:12px;padding:12px;margin:10px 0}
+        .est-resumen>p:first-child{margin:0 0 9px;font-size:14px;line-height:1.45;color:var(--tinta)}
+        .est-medidor{height:8px;border-radius:8px;background:var(--blueL);overflow:hidden}
+        .est-medidor i{display:block;height:100%;border-radius:8px;background:var(--blue)}
+        .est-cifras{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+        @media(min-width:640px){.est-cifras{grid-template-columns:repeat(4,minmax(0,1fr))}}
+        .est-cifra{background:#fff;border:1px solid var(--border);border-radius:12px;padding:10px 12px;min-width:0}
+        .est-cifra strong{display:block;font-size:24px;font-weight:800;line-height:1.1;color:var(--tinta)}
+        .est-cifra>span{display:block;margin-top:3px;font-size:12.5px;font-weight:600;color:var(--muted);line-height:1.25}
+        .est-cifra small{display:block;margin-top:3px;font-size:11.5px;color:var(--muted)}
+        .est-delta{display:inline-block;margin-top:5px;font-size:12px;font-weight:700;color:var(--muted)}
+        .est-delta.sube{color:var(--green)}
+        .est-delta.baja{color:var(--red)}
+        .est-sec{margin-top:6px}
+        .est-sec-cab{display:flex !important;width:100%;justify-content:space-between;align-items:center;border:0;background:none;font-family:inherit;cursor:pointer;padding:0;text-align:left}
+        .est-sec-cab small{font-weight:600;text-transform:none;letter-spacing:0}
+        .est-flecha{font-size:17px;line-height:1;color:var(--muted);padding:0 4px}
+        .est-sub{margin:10px 0 2px;font-size:13px;font-weight:800;color:var(--tinta)}
+        .est-sub small{font-weight:600;color:var(--muted)}
+        .est-graf{background:#fff;border:1px solid var(--border);border-radius:12px;padding:10px 10px 4px}
+        .est-lienzo{position:relative;outline:none}
+        .est-lienzo:focus-visible{box-shadow:0 0 0 2px var(--blueB);border-radius:8px}
+        .est-lienzo svg{display:block;touch-action:pan-y;overflow:visible}
+        .est-grid{stroke:var(--border);stroke-width:1}
+        .est-eje{font-size:11px;fill:var(--muted);font-family:inherit}
+        .est-val{font-size:11.5px;font-weight:800;fill:var(--tinta);font-family:inherit}
+        .est-col{fill:var(--blue)}
+        .est-col.sel{fill:var(--blueD)}
+        .est-celda{cursor:pointer}
+        .est-celda.sel{stroke:var(--tinta);stroke-width:1.5}
+        .est-tip{position:absolute;top:0;transform:translateX(-50%);background:var(--tinta);color:#fff;border-radius:8px;padding:6px 9px;font-size:12px;line-height:1.4;pointer-events:none;white-space:nowrap;z-index:2;box-shadow:0 4px 14px rgba(15,23,42,.18)}
+        .est-tip .t{font-weight:800}
+        .est-tip.izq{transform:translateX(-100%)}
+        .est-tip.der{transform:none}
+        .est-ver{margin-top:2px;border:0;background:none;color:var(--blue);font:inherit;font-size:12.5px;font-weight:700;padding:6px 2px;cursor:pointer}
+        .est-tabla-caja{overflow-x:auto}
+        .est-tabla{width:100%;border-collapse:collapse;font-size:12.5px;margin:2px 0 6px;font-variant-numeric:tabular-nums}
+        .est-tabla th{text-align:left;color:var(--muted);font-weight:700;padding:5px 4px;border-bottom:1px solid var(--border);white-space:nowrap}
+        .est-tabla td{padding:5px 4px;border-bottom:1px solid var(--border);color:#334155;white-space:nowrap}
+        .est-tabla td+td,.est-tabla th+th{text-align:right}
+        .est-leyenda{display:flex;align-items:center;gap:4px;font-size:11.5px;color:var(--muted);margin-top:6px;flex-wrap:wrap}
+        .est-leyenda i{width:16px;height:10px;border-radius:3px;display:inline-block}
+        .est-leyenda-nota{margin-left:6px}
+        .est-barras{display:flex;flex-direction:column;gap:9px;padding:8px 0}
+        .est-barra{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) auto;align-items:center;gap:8px}
+        .est-bn{font-size:13px;font-weight:600;color:var(--tinta);min-width:0;overflow-wrap:anywhere}
+        .est-bn small{display:block;font-size:11.5px;font-weight:500;color:var(--muted)}
+        .est-bt{height:8px;border-radius:8px;background:var(--suave);overflow:hidden}
+        .est-bt i{display:block;height:100%;border-radius:8px;background:var(--blue)}
+        .est-barra strong{font-size:13px;font-weight:800;color:var(--tinta);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+        @media(max-width:480px){.est-barra{grid-template-columns:minmax(0,1fr) auto;row-gap:4px}.est-bt{grid-column:1/-1;grid-row:2}}
+        .est-dos{display:grid;gap:10px}
+        .est-alerta{background:#fff;border:1px solid var(--amberB);border-left:4px solid var(--amber);border-radius:10px;padding:9px 11px;margin-bottom:7px}
+        .est-alerta.alta{border-color:#fecaca;border-left-color:var(--red)}
+        .est-alerta strong{font-size:14px}
+        .est-alerta ul{margin:5px 0 0;padding-left:18px;font-size:12.5px;color:#334155;line-height:1.45}
+        .est-chip{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:100px;font-size:11px;font-style:normal;font-weight:800;background:var(--suave);color:var(--muted);border:1px solid var(--border);vertical-align:2px;white-space:nowrap}
+        .est-chip.alta{background:var(--redL);color:var(--red);border-color:#fecaca}
+        .est-chip.media{background:var(--amberL);color:var(--amber);border-color:var(--amberB)}
+        .est-persona{background:#fff;border:1px solid var(--border);border-radius:12px;margin-bottom:7px;overflow:hidden}
+        .est-persona.con-alerta{border-left:4px solid var(--amber)}
+        .est-p-cab{display:block;width:100%;text-align:left;border:0;background:none;padding:10px 12px;font:inherit;cursor:pointer;color:inherit}
+        .est-p-cab strong{font-size:14.5px}
+        .est-p-cab small{display:block;margin-top:2px;font-size:12px;color:var(--muted)}
+        .est-p-det{padding:0 12px 12px;border-top:1px solid var(--border);font-size:12.5px;color:#334155}
+        .est-p-det h5{margin:10px 0 4px;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+        .est-p-det ul{margin:0;padding-left:18px;line-height:1.5}
+        .est-p-det small{color:var(--muted)}
+        .est-p-det p{margin:0}
+        .est-boton{display:block;margin-top:10px;padding:9px 12px;border:1.5px solid var(--border);border-radius:9px;background:#fff;font:inherit;font-size:13px;font-weight:700;color:var(--tinta);cursor:pointer}
+        .est-buscar{width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid var(--border);border-radius:10px;font:inherit;font-size:16px;margin-bottom:8px}
+        /* las pestañas del panel no entraban en el celular: «Asesores» y «Estadísticas» quedaban fuera de la pantalla */
+        .admin-tabs{overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding-bottom:2px}
+        .admin-tabs::-webkit-scrollbar{display:none}
+        .admin-tab{flex:1 0 auto;white-space:nowrap}
       `;
   (function () {
     try {
@@ -3401,7 +3821,7 @@
           if (data && data.ok) {
             const s = { token: tk, nombre: data.nombre, celular: data.celular, completa: !!data.completa };
             recordarSesion(s); setSesion(s); setVerificando(false);
-            rastrear("visita", contexto());
+            if (!visitaAnotada) { visitaAnotada = true; contextoCompleto().then((c) => rastrear("visita", c)); }
           } else {
             guardarTok(SESION_KEY, ""); recordarSesion(null); sesionTok = ""; setSesion(null); setVerificando(false);
           }

@@ -2,7 +2,10 @@
   // El nombre tiene que ser igual al del proyecto en Cloudflare o la compilación falla.
   "name": "renaware-peru",
   "compatibility_date": "2026-10-01",
+  // Solo responde /geo (la ubicación aproximada para Estadísticas). Los archivos no pasan por el Worker.
+  "main": "worker.js",
   "assets": {
+    "binding": "ASSETS",
     // El sitio entero es estático y vive en la raíz del repo.
     "directory": "./",
     // Cualquier ruta que no sea un archivo (por ejemplo /admin) abre index.html.

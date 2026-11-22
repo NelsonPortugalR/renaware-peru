@@ -54,6 +54,13 @@ window.supabase = { createClient: function () {
         return R({ codigo: s.codigo, precio: s.precio, precio_asesor: s.precio_asesor }); }
       if (n === "admin_asesores") return esAdmin(a.p_token) ? R([]) : E("Sesion invalida");
       if (n === "admin_actividad") return esAdmin(a.p_token) ? R(M.actividad || []) : E("Sesion invalida");
+      if (n === "admin_estadisticas") {   // lo que arma la base; con «internos» no deja a nadie fuera
+        if (!esAdmin(a.p_token)) return E("Sesion invalida");
+        var est = JSON.parse(JSON.stringify(M.estadisticas || {}));
+        if (a.p_op && a.p_op.internos) est.excluidos = [];
+        (est.personas || []).forEach(function (p) { if (S.internos && p.llave in S.internos) p.interno = S.internos[p.llave]; });
+        return R(est); }
+      if (n === "admin_interno") { if (!esAdmin(a.p_token)) return E("Sesion invalida"); S.internos = S.internos || {}; S.internos[a.p_llave] = !!a.p_interno; return R(!!a.p_interno); }
       return R(null);
     },
     storage: { from: function (b) { return {
@@ -69,7 +76,9 @@ window.supabase = { createClient: function () {
    o.fallaValida: cuántas veces falla la validación de la sesión, como sin red (-1: siempre) ·
    o.quien: { nombre, celular } de quien tiene la sesión (la llave «celular» puede ser un DNI de 8 dígitos) ·
    o.ua: el navegador que dice ser (para probar lo que cambia en iPhone) ·
-   o.video: { bytes, demora, falla } del video de mentira que sirve el Storage */
+   o.video: { bytes, demora, falla } del video de mentira que sirve el Storage ·
+   o.geo: lo que responde /geo (la ubicación aproximada que da el Worker); false = sin Worker ·
+   o.eventosFallan: cuántos envíos del registro de uso fallan, como sin señal (-1: todos) */
 async function abrir(o) {
   o = o || {};
   const dir = o.dir || path.join(__dirname, "..");
@@ -83,7 +92,8 @@ async function abrir(o) {
     isMobile: !!o.movil, hasTouch: !!o.movil, locale: "es-PE", timezoneId: "America/Lima",
     ...(o.ua ? { userAgent: o.ua } : {})
   });
-  const registro = { escrituras: [], pedidos: [], errores: [], videos: [] };
+  const registro = { escrituras: [], pedidos: [], errores: [], videos: [], eventos: [], lotes: 0, lotesFallidos: 0 };
+  const vistos = {};
   await ctx.addInitScript((m) => { window.__MOCK = m; try {
       if (m.__sesion !== false && !sessionStorage.getItem("sim_listo")) {   // solo al abrir: al recargar queda lo que la página haya guardado o borrado
         localStorage.setItem("rw_sesion_v1", m.__token || "tok-asesor");
@@ -100,6 +110,8 @@ async function abrir(o) {
     const archivo = (f) => fs.existsSync(f) && fs.statSync(f).isFile()
       ? ruta.fulfill({ status: 200, contentType: TIPOS[path.extname(f)] || "application/octet-stream", headers: { "access-control-allow-origin": "*" }, body: fs.readFileSync(f) })
       : ruta.fulfill({ status: 404, body: "no existe" });
+    if (u.origin === ORIGEN && u.pathname === "/geo" && o.geo !== false)
+      return json(o.geo || { ciudad: "Arequipa", region: "Arequipa", pais: "PE", lat: -16.4, lon: -71.54, isp: "Telefonica del Peru", asn: 6147, zona: "America/Lima" });
     if (u.origin === ORIGEN) {
       const p = decodeURIComponent(u.pathname);
       const f = path.join(dir, p);
@@ -114,6 +126,15 @@ async function abrir(o) {
       return ruta.fulfill({ status: 200, contentType: "text/css", headers: { "access-control-allow-origin": "*" }, body: css });
     }
     if (u.hostname === "fonts.gstatic.com" && fuente) return archivo(path.join(fuente, path.basename(u.pathname)));
+    if (u.origin === SB && u.pathname === "/rest/v1/rpc/registrar_eventos") {
+      if (req.method() === "OPTIONS") return ruta.fulfill({ status: 204, headers: { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "POST" } });
+      if (o.eventosFallan && (o.eventosFallan < 0 || registro.lotesFallidos < o.eventosFallan)) { registro.lotesFallidos++; return ruta.abort("internetdisconnected"); }
+      let b = {}; try { b = JSON.parse(req.postData() || "{}"); } catch (e) {}
+      registro.lotes++;
+      let n = 0;
+      (b.p_eventos || []).forEach((e) => { if (e.id && vistos[e.id]) return; vistos[e.id] = 1; n++; registro.eventos.push({ token: b.p_token, equipo: b.p_equipo, id: e.id, tipo: e.tipo, t: e.t, d: e.d || {} }); });
+      return json(n);
+    }
     if (u.origin === SB && u.pathname.startsWith("/rest/v1/")) {
       const tabla = u.pathname.slice(9);
       if (req.method() !== "GET") { registro.escrituras.push(req.method() + " " + tabla); return json({ code: "42501", message: "new row violates row-level security policy" }, 401); }
@@ -149,6 +170,7 @@ async function abrir(o) {
   await pagina.goto(ORIGEN + (o.ruta || "/"));
   await pagina.waitForSelector(o.espera || ".lista-btn, .login-box, .admin-login", { timeout: 15000 });
   await pagina.waitForTimeout(o.pausa == null ? 400 : o.pausa);
+  registro.opciones = o;   // una prueba puede cambiar, por ejemplo, eventosFallan a mitad de camino
   return { navegador, ctx, pagina, registro, cerrar: () => navegador.close() };
 }
 

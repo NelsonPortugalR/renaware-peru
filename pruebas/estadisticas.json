@@ -1,0 +1,958 @@
+{
+ "actualizado": "2026-11-20T16:00:00Z",
+ "periodo": {
+  "dias": 7,
+  "desde": "2026-11-14T05:00:00Z",
+  "hasta": "2026-11-20T16:00:00Z",
+  "internos": false
+ },
+ "excluidos": [
+  "Nelson"
+ ],
+ "equipo_total": 420,
+ "usaron_alguna_vez": 30,
+ "totales": {
+  "personas": 9,
+  "nuevas": 5,
+  "sesiones": 14,
+  "minutos": 263,
+  "ingresos": 6,
+  "fichas": 88,
+  "listas": 120,
+  "busquedas": 7,
+  "sin_resultado": 2,
+  "videos_vistos": 5,
+  "videos": 4,
+  "cotizaciones": 10,
+  "tutoriales": 3,
+  "simulador": 0,
+  "errores": 1
+ },
+ "anterior": {
+  "personas": 4,
+  "sesiones": 6,
+  "minutos": 80,
+  "fichas": 30,
+  "busquedas": 9,
+  "videos": 4,
+  "cotizaciones": 2
+ },
+ "por_dia": [
+  {
+   "dia": "2026-11-14",
+   "personas": 1,
+   "sesiones": 1,
+   "minutos": 6,
+   "fichas": 4,
+   "busquedas": 0,
+   "videos": 0,
+   "cotizaciones": 0,
+   "nuevas": 1
+  },
+  {
+   "dia": "2026-11-15",
+   "personas": 0,
+   "sesiones": 0,
+   "minutos": 0,
+   "fichas": 0,
+   "busquedas": 0,
+   "videos": 0,
+   "cotizaciones": 0,
+   "nuevas": 0
+  },
+  {
+   "dia": "2026-11-16",
+   "personas": 2,
+   "sesiones": 3,
+   "minutos": 18,
+   "fichas": 8,
+   "busquedas": 1,
+   "videos": 0,
+   "cotizaciones": 1,
+   "nuevas": 1
+  },
+  {
+   "dia": "2026-11-17",
+   "personas": 3,
+   "sesiones": 4,
+   "minutos": 33,
+   "fichas": 12,
+   "busquedas": 0,
+   "videos": 1,
+   "cotizaciones": 1,
+   "nuevas": 1
+  },
+  {
+   "dia": "2026-11-18",
+   "personas": 2,
+   "sesiones": 2,
+   "minutos": 16,
+   "fichas": 8,
+   "busquedas": 2,
+   "videos": 0,
+   "cotizaciones": 1,
+   "nuevas": 0
+  },
+  {
+   "dia": "2026-11-19",
+   "personas": 4,
+   "sesiones": 6,
+   "minutos": 48,
+   "fichas": 16,
+   "busquedas": 1,
+   "videos": 1,
+   "cotizaciones": 2,
+   "nuevas": 1
+  },
+  {
+   "dia": "2026-11-20",
+   "personas": 9,
+   "sesiones": 13,
+   "minutos": 126,
+   "fichas": 36,
+   "busquedas": 3,
+   "videos": 2,
+   "cotizaciones": 4,
+   "nuevas": 5
+  }
+ ],
+ "por_hora": [
+  {
+   "hora": 0,
+   "minutos": 0,
+   "acciones": 0,
+   "personas": 0
+  },
+  {
+   "hora": 1,
+   "minutos": 0,
+   "acciones": 0,
+   "personas": 0
+  },
+  {
+   "hora": 2,
+   "minutos": 0,
+   "acciones": 0,
+   "personas": 0
+  },
+  {
+   "hora": 3,
+   "minutos": 0,
+   "acciones": 0,
+   "personas": 0
+  },
+  {
+   "hora": 4,
+   "minutos": 0,
+   "acciones": 0,
+   "personas": 0
+  },
+  {
+   "hora": 5,
+   "minutos": 0,
+   "acciones": 0,
+   "personas": 0
+  },
+  {
+   "hora": 6,
+   "minutos": 0,
+   "acciones": 0,
+   "personas": 0
+  },
+  {
+   "hora": 7,
+   "minutos": 0,
+   "acciones": 0,
+   "personas": 0
+  },
+  {
+   "hora": 8,
+   "minutos": 96,
+   "acciones": 51,
+   "personas": 9
+  },
+  {
+   "hora": 9,
+   "minutos": 40,
+   "acciones": 23,
+   "personas": 5
+  },
+  {
+   "hora": 10,
+   "minutos": 22,
+   "acciones": 14,
+   "personas": 3
+  },
+  {
+   "hora": 11,
+   "minutos": 18,
+   "acciones": 12,
+   "personas": 2
+  },
+  {
+   "hora": 12,
+   "minutos": 9,
+   "acciones": 7,
+   "personas": 1
+  },
+  {
+   "hora": 13,
+   "minutos": 6,
+   "acciones": 6,
+   "personas": 1
+  },
+  {
+   "hora": 14,
+   "minutos": 0,
+   "acciones": 0,
+   "personas": 0
+  },
+  {
+   "hora": 15,
+   "minutos": 0,
+   "acciones": 0,
+   "personas": 0
+  },
+  {
+   "hora": 16,
+   "minutos": 12,
+   "acciones": 9,
+   "personas": 2
+  },
+  {
+   "hora": 17,
+   "minutos": 15,
+   "acciones": 10,
+   "personas": 2
+  },
+  {
+   "hora": 18,
+   "minutos": 0,
+   "acciones": 0,
+   "personas": 0
+  },
+  {
+   "hora": 19,
+   "minutos": 21,
+   "acciones": 13,
+   "personas": 3
+  },
+  {
+   "hora": 20,
+   "minutos": 30,
+   "acciones": 18,
+   "personas": 4
+  },
+  {
+   "hora": 21,
+   "minutos": 8,
+   "acciones": 7,
+   "personas": 1
+  },
+  {
+   "hora": 22,
+   "minutos": 0,
+   "acciones": 0,
+   "personas": 0
+  },
+  {
+   "hora": 23,
+   "minutos": 0,
+   "acciones": 0,
+   "personas": 0
+  }
+ ],
+ "dia_hora": [
+  {
+   "dow": 1,
+   "hora": 8,
+   "minutos": 14,
+   "acciones": 7
+  },
+  {
+   "dow": 1,
+   "hora": 9,
+   "minutos": 6,
+   "acciones": 3
+  },
+  {
+   "dow": 1,
+   "hora": 10,
+   "minutos": 3,
+   "acciones": 1
+  },
+  {
+   "dow": 1,
+   "hora": 19,
+   "minutos": 4,
+   "acciones": 2
+  },
+  {
+   "dow": 1,
+   "hora": 20,
+   "minutos": 6,
+   "acciones": 3
+  },
+  {
+   "dow": 2,
+   "hora": 8,
+   "minutos": 14,
+   "acciones": 7
+  },
+  {
+   "dow": 2,
+   "hora": 9,
+   "minutos": 6,
+   "acciones": 3
+  },
+  {
+   "dow": 2,
+   "hora": 10,
+   "minutos": 3,
+   "acciones": 1
+  },
+  {
+   "dow": 2,
+   "hora": 19,
+   "minutos": 4,
+   "acciones": 2
+  },
+  {
+   "dow": 2,
+   "hora": 20,
+   "minutos": 6,
+   "acciones": 3
+  },
+  {
+   "dow": 3,
+   "hora": 8,
+   "minutos": 14,
+   "acciones": 7
+  },
+  {
+   "dow": 3,
+   "hora": 9,
+   "minutos": 6,
+   "acciones": 3
+  },
+  {
+   "dow": 3,
+   "hora": 10,
+   "minutos": 3,
+   "acciones": 1
+  },
+  {
+   "dow": 3,
+   "hora": 19,
+   "minutos": 4,
+   "acciones": 2
+  },
+  {
+   "dow": 3,
+   "hora": 20,
+   "minutos": 6,
+   "acciones": 3
+  },
+  {
+   "dow": 4,
+   "hora": 8,
+   "minutos": 14,
+   "acciones": 7
+  },
+  {
+   "dow": 4,
+   "hora": 9,
+   "minutos": 6,
+   "acciones": 3
+  },
+  {
+   "dow": 4,
+   "hora": 10,
+   "minutos": 3,
+   "acciones": 1
+  },
+  {
+   "dow": 4,
+   "hora": 19,
+   "minutos": 4,
+   "acciones": 2
+  },
+  {
+   "dow": 4,
+   "hora": 20,
+   "minutos": 6,
+   "acciones": 3
+  },
+  {
+   "dow": 5,
+   "hora": 8,
+   "minutos": 28,
+   "acciones": 14
+  },
+  {
+   "dow": 5,
+   "hora": 9,
+   "minutos": 12,
+   "acciones": 6
+  },
+  {
+   "dow": 5,
+   "hora": 10,
+   "minutos": 6,
+   "acciones": 3
+  },
+  {
+   "dow": 5,
+   "hora": 19,
+   "minutos": 8,
+   "acciones": 4
+  },
+  {
+   "dow": 5,
+   "hora": 20,
+   "minutos": 12,
+   "acciones": 6
+  },
+  {
+   "dow": 6,
+   "hora": 8,
+   "minutos": 14,
+   "acciones": 7
+  },
+  {
+   "dow": 6,
+   "hora": 9,
+   "minutos": 6,
+   "acciones": 3
+  },
+  {
+   "dow": 6,
+   "hora": 10,
+   "minutos": 3,
+   "acciones": 1
+  },
+  {
+   "dow": 6,
+   "hora": 19,
+   "minutos": 4,
+   "acciones": 2
+  },
+  {
+   "dow": 6,
+   "hora": 20,
+   "minutos": 6,
+   "acciones": 3
+  },
+  {
+   "dow": 7,
+   "hora": 20,
+   "minutos": 6,
+   "acciones": 3
+  }
+ ],
+ "por_semana": [
+  {
+   "semana": "2026-11-09",
+   "personas": 2,
+   "nuevas": 2,
+   "volvieron": 0,
+   "minutos": 12
+  },
+  {
+   "semana": "2026-11-16",
+   "personas": 9,
+   "nuevas": 5,
+   "volvieron": 4,
+   "minutos": 251
+  }
+ ],
+ "personas": [
+  {
+   "llave": "912345678",
+   "nombre": "ROSA QUISPE MAMANI",
+   "depto": "AREQUIPA",
+   "primera": "2026-11-14T13:00:00Z",
+   "ultima": "2026-11-20T15:10:00Z",
+   "dias": 3,
+   "sesiones": 4,
+   "minutos": 41,
+   "fichas": 12,
+   "busquedas": 2,
+   "videos_vistos": 1,
+   "videos": 1,
+   "cotizaciones": 4,
+   "ingresos": 1,
+   "n_equipos": 2,
+   "n_ips": 2,
+   "interno": false,
+   "alerta": "alta",
+   "motivos": [
+    "Usada en dos celulares a la vez (Celular · Android · Chrome · 360x800 y Celular · iPhone · Safari · 390x844) en 3 momentos, desde conexiones distintas; el primero el 20/11 08:20",
+    "Entró desde Arequipa y Lima el 20/11, en equipos distintos"
+   ],
+   "equipos": [
+    {
+     "huella": "Celular · Android · Chrome · 360x800",
+     "so": "Android",
+     "navegador": "Chrome",
+     "dispositivo": "Celular",
+     "modelo": "SM-A145M",
+     "pantalla": "360x800",
+     "ingresos": 2,
+     "desde": "2026-11-14T13:00:00Z",
+     "hasta": "2026-11-20T15:10:00Z"
+    },
+    {
+     "huella": "Celular · iPhone · Safari · 390x844",
+     "so": "iPhone",
+     "navegador": "Safari",
+     "dispositivo": "Celular",
+     "modelo": null,
+     "pantalla": "390x844",
+     "ingresos": 1,
+     "desde": "2026-11-20T13:20:00Z",
+     "hasta": "2026-11-20T14:00:00Z"
+    }
+   ],
+   "lugares": [
+    {
+     "ciudad": "Arequipa",
+     "region": "Arequipa",
+     "pais": "PE",
+     "isp": "Telefonica del Peru",
+     "veces": 3,
+     "ultima": "2026-11-20T15:10:00Z"
+    },
+    {
+     "ciudad": "Lima",
+     "region": "Lima",
+     "pais": "PE",
+     "isp": "America Movil Peru",
+     "veces": 1,
+     "ultima": "2026-11-20T13:20:00Z"
+    }
+   ]
+  },
+  {
+   "llave": "923456789",
+   "nombre": "CARMEN HUAMAN DE LA CRUZ",
+   "depto": "AREQUIPA",
+   "primera": "2026-11-14T13:00:00Z",
+   "ultima": "2026-11-20T15:10:00Z",
+   "dias": 3,
+   "sesiones": 4,
+   "minutos": 38,
+   "fichas": 15,
+   "busquedas": 2,
+   "videos_vistos": 1,
+   "videos": 1,
+   "cotizaciones": 2,
+   "ingresos": 1,
+   "n_equipos": 2,
+   "n_ips": 2,
+   "interno": false,
+   "alerta": "media",
+   "motivos": [
+    "Usada en dos equipos a la vez (Celular · Android · Chrome · 360x800 y Escritorio · Windows · Chrome · 1366x768) en 1 momento, desde la misma conexión (puede ser la misma persona con dos equipos); el primero el 19/11 09:40"
+   ],
+   "equipos": [
+    {
+     "huella": "Celular · Android · Chrome · 360x800",
+     "so": "Android",
+     "navegador": "Chrome",
+     "dispositivo": "Celular",
+     "modelo": null,
+     "pantalla": "360x800",
+     "ingresos": 1,
+     "desde": "2026-11-17T13:00:00Z",
+     "hasta": "2026-11-20T14:00:00Z"
+    },
+    {
+     "huella": "Escritorio · Windows · Chrome · 1366x768",
+     "so": "Windows",
+     "navegador": "Chrome",
+     "dispositivo": "Escritorio",
+     "modelo": null,
+     "pantalla": "1366x768",
+     "ingresos": 1,
+     "desde": "2026-11-19T14:40:00Z",
+     "hasta": "2026-11-19T15:00:00Z"
+    }
+   ],
+   "lugares": [
+    {
+     "ciudad": "Arequipa",
+     "region": "Arequipa",
+     "pais": "PE",
+     "isp": "Telefonica del Peru",
+     "veces": 3,
+     "ultima": "2026-11-20T15:10:00Z"
+    }
+   ]
+  },
+  {
+   "llave": "934567890",
+   "nombre": "LUCIA FLORES CCAMA",
+   "depto": "CUSCO",
+   "primera": "2026-11-14T13:00:00Z",
+   "ultima": "2026-11-20T15:10:00Z",
+   "dias": 3,
+   "sesiones": 4,
+   "minutos": 22,
+   "fichas": 8,
+   "busquedas": 2,
+   "videos_vistos": 1,
+   "videos": 0,
+   "cotizaciones": 1,
+   "ingresos": 1,
+   "n_equipos": 1,
+   "n_ips": 2,
+   "interno": false,
+   "alerta": null,
+   "motivos": [],
+   "equipos": [
+    {
+     "huella": "Celular · Android · Chrome · 360x800",
+     "so": "Android",
+     "navegador": "Chrome",
+     "dispositivo": "Celular",
+     "modelo": null,
+     "pantalla": "360x800",
+     "ingresos": 1,
+     "desde": "2026-11-14T13:00:00Z",
+     "hasta": "2026-11-20T15:10:00Z"
+    }
+   ],
+   "lugares": [
+    {
+     "ciudad": "Arequipa",
+     "region": "Arequipa",
+     "pais": "PE",
+     "isp": "Telefonica del Peru",
+     "veces": 3,
+     "ultima": "2026-11-20T15:10:00Z"
+    }
+   ]
+  },
+  {
+   "llave": "45678912",
+   "nombre": "",
+   "depto": null,
+   "primera": "2026-11-14T13:00:00Z",
+   "ultima": "2026-11-20T15:10:00Z",
+   "dias": 3,
+   "sesiones": 4,
+   "minutos": 12,
+   "fichas": 3,
+   "busquedas": 2,
+   "videos_vistos": 1,
+   "videos": 0,
+   "cotizaciones": 0,
+   "ingresos": 1,
+   "n_equipos": 1,
+   "n_ips": 2,
+   "interno": false,
+   "alerta": null,
+   "motivos": [],
+   "equipos": [
+    {
+     "huella": "Celular · Android · Chrome · 360x800",
+     "so": "Android",
+     "navegador": "Chrome",
+     "dispositivo": "Celular",
+     "modelo": null,
+     "pantalla": "360x800",
+     "ingresos": 1,
+     "desde": "2026-11-14T13:00:00Z",
+     "hasta": "2026-11-20T15:10:00Z"
+    }
+   ],
+   "lugares": []
+  },
+  {
+   "llave": "945678901",
+   "nombre": "Nelson",
+   "depto": "AREQUIPA",
+   "primera": "2026-11-14T13:00:00Z",
+   "ultima": "2026-11-20T15:10:00Z",
+   "dias": 3,
+   "sesiones": 4,
+   "minutos": 60,
+   "fichas": 20,
+   "busquedas": 2,
+   "videos_vistos": 1,
+   "videos": 2,
+   "cotizaciones": 6,
+   "ingresos": 1,
+   "n_equipos": 1,
+   "n_ips": 2,
+   "interno": true,
+   "alerta": null,
+   "motivos": [],
+   "equipos": [
+    {
+     "huella": "Celular · Android · Chrome · 360x800",
+     "so": "Android",
+     "navegador": "Chrome",
+     "dispositivo": "Celular",
+     "modelo": null,
+     "pantalla": "360x800",
+     "ingresos": 1,
+     "desde": "2026-11-14T13:00:00Z",
+     "hasta": "2026-11-20T15:10:00Z"
+    }
+   ],
+   "lugares": [
+    {
+     "ciudad": "Arequipa",
+     "region": "Arequipa",
+     "pais": "PE",
+     "isp": "Telefonica del Peru",
+     "veces": 3,
+     "ultima": "2026-11-20T15:10:00Z"
+    }
+   ]
+  }
+ ],
+ "lugares": [
+  {
+   "ciudad": "Arequipa",
+   "region": "Arequipa",
+   "pais": "PE",
+   "personas": 7,
+   "visitas": 20
+  },
+  {
+   "ciudad": "Lima",
+   "region": "Lima",
+   "pais": "PE",
+   "personas": 2,
+   "visitas": 3
+  },
+  {
+   "ciudad": "Cusco",
+   "region": "Cusco",
+   "pais": "PE",
+   "personas": 1,
+   "visitas": 2
+  }
+ ],
+ "operadores": [
+  {
+   "isp": "Telefonica del Peru",
+   "personas": 5,
+   "visitas": 14
+  },
+  {
+   "isp": "America Movil Peru",
+   "personas": 3,
+   "visitas": 8
+  }
+ ],
+ "equipos": {
+  "so": [
+   {
+    "v": "Android",
+    "personas": 7
+   },
+   {
+    "v": "iPhone",
+    "personas": 2
+   },
+   {
+    "v": "Windows",
+    "personas": 1
+   }
+  ],
+  "navegador": [
+   {
+    "v": "Chrome",
+    "personas": 8
+   },
+   {
+    "v": "Safari",
+    "personas": 2
+   }
+  ],
+  "tipo": [
+   {
+    "v": "Celular",
+    "personas": 9
+   },
+   {
+    "v": "Escritorio",
+    "personas": 1
+   }
+  ],
+  "modelo": [
+   {
+    "v": "SM-A145M",
+    "personas": 2
+   },
+   {
+    "v": "moto g24",
+    "personas": 1
+   }
+  ],
+  "pantalla": [
+   {
+    "v": "360x800",
+    "personas": 5
+   },
+   {
+    "v": "390x844",
+    "personas": 2
+   }
+  ]
+ },
+ "contenido": {
+  "productos": [
+   {
+    "codigo": "000158",
+    "nombre": "Juego Gourmet serie Zylstra",
+    "fichas": 22,
+    "personas": 8,
+    "cotizaciones": 5,
+    "videos": 2
+   },
+   {
+    "codigo": "000115",
+    "nombre": "Juego de cuchillos Elite 16 piezas",
+    "fichas": 14,
+    "personas": 6,
+    "cotizaciones": 1,
+    "videos": 0
+   }
+  ],
+  "listas": [
+   {
+    "lista": "general",
+    "veces": 70,
+    "personas": 9
+   },
+   {
+    "lista": "navidad-magica",
+    "veces": 30,
+    "personas": 6
+   }
+  ],
+  "busquedas": [
+   {
+    "texto": "olla",
+    "veces": 3,
+    "sin": 0,
+    "personas": 2
+   },
+   {
+    "texto": "paleta",
+    "veces": 2,
+    "sin": 2,
+    "personas": 1
+   }
+  ],
+  "videos_vistos": [
+   {
+    "codigo": "000158",
+    "nombre": "Juego Gourmet serie Zylstra",
+    "veces": 3,
+    "personas": 2
+   }
+  ]
+ },
+ "envios": {
+  "video": {
+   "salieron": 4,
+   "enviados": 2,
+   "probables": 1,
+   "enlace": 1,
+   "cancelados": 1,
+   "otro_toque": 2,
+   "cerro_antes": 0,
+   "fallas": 1,
+   "mb_prom": 12.4,
+   "seg_prom": 6.5
+  },
+  "cotizacion": {
+   "salieron": 10,
+   "enviados": 8,
+   "probables": 2,
+   "cancelados": 3,
+   "otro_toque": 1,
+   "descargas": 0,
+   "fallas": 0,
+   "autocompra": 3
+  }
+ },
+ "embudo": {
+  "activas": 9,
+  "abrieron_ficha": 8,
+  "intentaron": 6,
+  "enviaron": 5,
+  "fichas": 88,
+  "intentos": 24,
+  "salieron": 14
+ },
+ "fallas": [
+  {
+   "cuando": "2026-11-20T15:00:00Z",
+   "nombre": "ROSA QUISPE MAMANI",
+   "tipo": "video",
+   "estado": "falla",
+   "detalle": {
+    "accion": "enviar",
+    "resultado": "error",
+    "paso": "bajar",
+    "error": "TypeError: Failed to fetch",
+    "nombre": "Olla a presión"
+   },
+   "equipo": "Celular · Android · Chrome · 360x800"
+  }
+ ],
+ "errores": [
+  {
+   "msg": "Uncaught TypeError: x is undefined",
+   "veces": 1,
+   "personas": 1,
+   "ultima": "2026-11-19T20:00:00Z"
+  }
+ ],
+ "inactivas": [
+  {
+   "nombre": "MARIA TERESA PUMA ARCE",
+   "ultima": "2026-11-10T14:00:00Z"
+  }
+ ],
+ "ultimos": [
+  {
+   "cuando": "2026-11-20T15:10:00Z",
+   "nombre": "ROSA QUISPE MAMANI",
+   "tipo": "cotizacion",
+   "detalle": {
+    "via": "compartir",
+    "resultado": "ok",
+    "nombre": "Juego Gourmet serie Zylstra",
+    "modo": "autocompra"
+   }
+  },
+  {
+   "cuando": "2026-11-20T15:08:00Z",
+   "nombre": "ROSA QUISPE MAMANI",
+   "tipo": "video",
+   "detalle": {
+    "accion": "enviar",
+    "fase": "abre",
+    "envio": "x",
+    "nombre": "Olla a presión"
+   }
+  },
+  {
+   "cuando": "2026-11-20T15:01:00Z",
+   "nombre": "CARMEN HUAMAN DE LA CRUZ",
+   "tipo": "buscar",
+   "detalle": {
+    "texto": "paleta",
+    "resultados": 0
+   }
+  }
+ ]
+}

@@ -16,6 +16,7 @@ const path = require("path");
 const fs = require("fs");
 const { abrir, CLAVE_ADMIN } = require("./simulador.js");
 const DATOS = require("./datos.json");
+const ESTADISTICAS = require("./estadisticas.json");   // lo que arma admin_estadisticas, con personas y cifras inventadas
 const RAIZ = path.join(__dirname, "..");
 const CAPTURAS = process.argv[2] || "";
 
@@ -44,7 +45,15 @@ async function sesion(o) {
   s.pestana = async (t) => { await p.locator(".mode-tab", { hasText: t }).click(); await p.waitForTimeout(200); };
   s.fila = (t) => p.locator(".fila", { hasText: t }).first();
   s.rpc = (n) => p.evaluate((q) => (window.__SIM ? window.__SIM.rpc : []).filter((x) => x[0] === q).map((x) => x[1]), n);
-  s.eventos = async (tipo) => (await s.rpc("registrar_evento")).filter((x) => !tipo || x.p_tipo === tipo).map((x) => Object.assign({ tipo: x.p_tipo }, x.p_detalle));
+  s.eventos = async (tipo) => {
+    for (let k = 0; k < 40; k++) {
+      const quedan = await p.evaluate(() => { try { if (window.__rwEnviarEventos) window.__rwEnviarEventos(true); return JSON.parse(localStorage.getItem("rw_eventos_v1") || "[]").length; } catch (e) { return 0; } });
+      if (!quedan) break;
+      await p.waitForTimeout(100);
+    }
+    return s.registro.eventos.filter((x) => !tipo || x.tipo === tipo).map((x) => Object.assign({ tipo: x.tipo }, x.d));
+  };
+  s.cola = () => p.evaluate(() => { try { return JSON.parse(localStorage.getItem("rw_eventos_v1") || "[]"); } catch (e) { return []; } });
   /* Lo que dice la cotización que la página dejó armada: la imagen se dibuja en un lienzo, así que aquí se revisan sus
      datos (window.__cotizacion). Tras cada cambio la página la rearma con unos 400 ms de retraso: se espera a que cumpla `cuando`.
      Los montos traen un espacio duro entre «S/» y el número: aquí se cambia por uno normal. */
@@ -470,29 +479,9 @@ async function parteAlta() {
 }
 
 /* ------------------------------------------------------------------ 6. panel de administración */
-const ACTIVIDAD = {
-  desde: "2026-11-13T05:00:00Z",
-  totales: { personas: 2, visitas: 5, minutos: 63, fichas: 20, cotizaciones: 6, videos: 1 },
-  resumen: [
-    { celular: "45678912", nombre: "Rosa Quispe", visitas: 3, dias: 2, minutos: 41, fichas: 12, cotizaciones: 4, videos: 1, acciones: 30, sesiones: 1, ultima: "2026-11-20T15:10:00Z", dispositivo: "Celular", so: "Android", navegador: "Chrome", pantalla: "360x800", zona: "America/Lima", pais: "PE" },
-    { celular: "40123456", nombre: "", visitas: 2, dias: 1, minutos: 22, fichas: 8, cotizaciones: 2, videos: 0, acciones: 15, sesiones: 1, ultima: "2026-11-19T22:00:00Z", dispositivo: "Celular", so: "iOS", navegador: "Safari", pantalla: "390x844", zona: "America/Lima", pais: "PE" }
-  ],
-  por_dia: [{ dia: "2026-11-20", personas: 2, minutos: 40, fichas: 14, cotizaciones: 5, videos: 1 }, { dia: "2026-11-19", personas: 1, minutos: 23, fichas: 6, cotizaciones: 1, videos: 0 }],
-  equipos: [{ so: "Android", n: 1 }, { so: "iOS", n: 1 }],
-  por_tipo: [{ tipo: "ver_producto", n: 20 }, { tipo: "cotizacion", n: 7 }, { tipo: "buscar", n: 4 }],
-  top_productos: [{ producto: "JUEGO GOURMET SERIE ZYLSTRA", n: 9 }],
-  busquedas: [{ texto: "olla", n: 3, sin: 0 }, { texto: "tetera", n: 1, sin: 1 }],
-  fallas: [{ cuando: "2026-11-20T15:00:00Z", celular: "45678912", nombre: "Rosa Quispe", tipo: "video", detalle: { accion: "enviar", resultado: "error", paso: "bajar", error: "TypeError: Failed to fetch", nombre: "Olla a presión" }, so: "Android", navegador: "Chrome" }],
-  ultimos: [
-    { cuando: "2026-11-20T15:10:00Z", celular: "45678912", nombre: "Rosa Quispe", tipo: "cotizacion", detalle: { via: "compartir", resultado: "ok", nombre: "JUEGO GOURMET SERIE ZYLSTRA", modo: "autocompra" } },
-    { cuando: "2026-11-20T15:05:00Z", celular: "45678912", nombre: "Rosa Quispe", tipo: "video", detalle: { accion: "enviar", resultado: "otro_toque", nombre: "Olla a presión", mb: 12.4, ms: 9000 } },
-    { cuando: "2026-11-20T15:01:00Z", celular: "45678912", nombre: "Rosa Quispe", tipo: "buscar", detalle: { texto: "tetera", resultados: 0 } },
-    { cuando: "2026-11-19T22:00:00Z", celular: "40123456", nombre: "", tipo: "visita", detalle: { so: "iOS" } }
-  ]
-};
 async function admin() {
   titulo("Admin: precios de servicios y de repuestos");
-  const s = await sesion({ viewport: { width: 900, height: 900 }, ruta: "/admin", sinSesion: true, cambiar: (m) => { sinBono(m); m.actividad = ACTIVIDAD; } });
+  const s = await sesion({ viewport: { width: 900, height: 900 }, ruta: "/admin", sinSesion: true, cambiar: (m) => { sinBono(m); m.estadisticas = clonar(ESTADISTICAS); } });
   const p = s.pagina;
   await p.locator(".admin-login input").fill("mala"); await p.locator(".admin-login .admin-btn-main").click(); await p.waitForTimeout(250);
   ok(/Clave incorrecta/.test(await s.texto(".admin-login-err")), "con clave mala no entra");
@@ -528,26 +517,44 @@ async function admin() {
   igual(await s.rpc("set_precio_repuesto_tok"), [{ p_token: "tok-admin", p_codigo: "30104", p_precio: 26 }], "y su precio de cliente se cambia como antes");
   await s.foto("admin-servicios");
 
-  titulo("Admin: Actividad (quién entra, desde dónde, cuánto y qué hace)");
-  await p.locator(".admin-tab", { hasText: "Actividad" }).click(); await p.waitForTimeout(400);
-  igual(await s.rpc("admin_actividad"), [{ p_token: "tok-admin", p_dias: 7 }], "pide la actividad de los últimos 7 días con la sesión de admin");
-  igual(await s.textos(".act-total"), ["2Personas", "5Visitas", "63Minutos de uso", "20Fichas abiertas", "6Cotizaciones enviadas", "1Videos enviados"], "arriba, los totales del período");
-  igual(await s.textos(".act-persona strong"), ["Rosa Quispe", "40123456"], "una tarjeta por persona (si no se sabe el nombre, su DNI)");
-  const per = await s.textos(".act-persona small");
-  ok(/^Celular · Android · Chrome · última vez: /.test(per[0]) && /^Celular · iPhone · Safari · última vez: /.test(per[1]), "con su equipo, su navegador y cuándo entró por última vez → " + per.join(" | "));
-  igual(await p.locator(".act-persona").first().locator(".act-datos span").allInnerTexts(), ["3 visitas", "41 min", "12 fichas", "4 cotizaciones", "1 video"], "y cuánto usó: visitas, minutos, fichas, cotizaciones y videos");
-  const act = await p.evaluate(() => { const r = {}; document.querySelectorAll(".admin-body .sim-sect").forEach((t) => { const c = t.nextElementSibling; r[t.textContent.trim()] = c && c.classList.contains("sim-card") ? Array.from(c.querySelectorAll(".sim-line")).map((x) => x.textContent.replace(/\s+/g, " ").trim()) : null; }); return r; });
-  igual(Object.keys(act), ["Por asesor", "Por día", "Desde qué equipo entran", "Productos más abiertos", "Qué buscan", "Qué usan", "Fallas al compartir y errores", "Últimos movimientos"], "las secciones del panel");
-  ok(act["Por día"].length === 2 && /2 personas · 40 min · 14 fichas · 5 cotiz\. · 1 videos$/.test(act["Por día"][0]), "por día → " + act["Por día"][0]);
-  igual(act["Desde qué equipo entran"], ["Android1 persona", "iPhone1 persona"], "desde qué equipo entran");
-  igual(act["Qué buscan"], ["olla3", "teterasin resultados 1 vez1"], "qué buscan, y lo que no encuentran");
-  igual(act["Qué usan"], ["Fichas abiertas20", "Cotizaciones (intentos)7", "Búsquedas4"], "qué usan, con nombres claros");
-  ok(/^Rosa Quispe video falló: Olla a presiónAndroid · Chrome · bajar · TypeError: Failed to fetch/.test(act["Fallas al compartir y errores"][0]), "las fallas al compartir, con el equipo y el motivo → " + act["Fallas al compartir y errores"][0]);
-  const ult = act["Últimos movimientos"];
-  ok(/^Rosa Quispe cotización enviada: JUEGO GOURMET SERIE ZYLSTRA \(autocompra\)/.test(ult[0]) && /^Rosa Quispe video pidió otro toque: Olla a presión \(12\.4 MB, 9 s\)/.test(ult[1]) && /^Rosa Quispe buscó «tetera» \(sin resultados\)/.test(ult[2]) && /^40123456 entró/.test(ult[3]), "y los últimos movimientos, en palabras → " + ult.join(" | "));
-  await s.foto("admin-actividad", true);
-  await p.locator(".ev-tools .sim-chip", { hasText: "Hoy" }).click(); await p.waitForTimeout(300);
-  igual((await s.rpc("admin_actividad"))[1], { p_token: "tok-admin", p_dias: 1 }, "«Hoy» pide solo el día");
+  titulo("Admin: Estadísticas (todo lo que se sabe del uso, sin Nelson si se quiere)");
+  await p.locator(".admin-tab", { hasText: "Estadísticas" }).click(); await p.waitForTimeout(700);
+  igual(await s.rpc("admin_estadisticas"), [{ p_token: "tok-admin", p_op: { dias: 7, internos: false } }], "pide los últimos 7 días, sin las cuentas internas, con la sesión de admin");
+  igual(await s.textos(".est-filtros:not(.chico) .sim-chip.on"), ["7 días", "✓ Sin mí"], "arriba, una sola fila de filtros: el período y «Sin mí»");
+  ok(/^Sin contar: Nelson\./.test(await s.texto(".admin-body > .est-nota")), "y dice a quién deja fuera");
+  igual(await s.texto(".est-resumen p"), "9 personas usaron el portal los últimos 7 días: el 2,1 % del equipo (420 personas con DNI). 5 entraron por primera vez.", "el resumen: cuántas lo usan y qué parte del equipo es");
+  igual(await s.textos(".est-cifra strong"), ["9", "14", "263", "88", "10", "4", "7", "5"], "las cifras del período");
+  igual(await s.textos(".est-cifra > span:not(.est-delta)"), ["Personas", "Sesiones de uso", "Minutos de uso", "Fichas abiertas", "Cotizaciones enviadas", "Videos enviados", "Búsquedas", "Videos vistos"], "con nombres claros");
+  igual((await s.textos(".est-cifra .est-delta")).slice(0, 7), ["▲ 5 más", "▲ 8 más", "▲ 183 más", "▲ 58 más", "▲ 8 más", "igual", "▼ 2 menos"], "y cuánto cambió contra el período anterior");
+  const alertas = await s.textos(".est-alerta");
+  ok(alertas.length === 2 && /^⚠ Rosa Quispe MamaniAlta/.test(alertas[0]) && /dos celulares a la vez/.test(alertas[0]) && /^⚠ Carmen Huaman de la CruzRevisar/.test(alertas[1]), "las posibles cuentas compartidas, primero la más clara, con sus motivos → " + alertas.map((x) => x.slice(0, 60)).join(" | "));
+  igual([await s.cuenta(".est-graf"), await s.cuenta(".est-graf:nth-of-type(1) .est-col, .est-sec .est-graf .est-col") > 0, await s.cuenta(".est-celda")], [3, true, 168], "gráficos: uso por día, por hora, y el mapa de día y hora (7 × 24)");
+  const graf = p.locator(".est-graf").first();
+  igual(await graf.locator("path.est-col").count(), 7, "una columna por día");
+  await graf.locator(".est-lienzo rect").nth(6).hover(); await p.waitForTimeout(150);
+  ok(/viernes, 20 de noviembre/.test(await graf.locator(".est-tip").innerText()) && /9 personas \(5 nuevas\)/.test(await graf.locator(".est-tip").innerText()), "al pasar el mouse (o tocar) una columna, su detalle → " + (await graf.locator(".est-tip").innerText()).replace(/\n/g, " | "));
+  await graf.locator(".est-ver").click(); await p.waitForTimeout(150);
+  igual(await graf.locator(".est-tabla tbody tr").count(), 7, "y cada gráfico tiene sus números en una tabla");
+  await p.locator(".est-filtros.chico .sim-chip", { hasText: "Minutos" }).click(); await p.waitForTimeout(150);
+  igual(await graf.locator("text.est-val").textContent(), "126", "se puede ver por minutos (y por sesiones, fichas o envíos)");
+  const pers = await s.textos(".est-persona .est-p-nom");
+  igual(pers, ["Rosa Quispe Mamani⚠ ¿Cuenta compartida?", "Carmen Huaman de la Cruz⚠ Revisar", "Lucia Flores Ccama", "Sin nombre", "NelsonInterna"], "una tarjeta por persona, primero las que hay que revisar; los nombres como se escriben");
+  await p.locator(".est-p-cab").first().click(); await p.waitForTimeout(150);
+  const det = await s.texto(".est-p-det");
+  ok(/Celular · iPhone · Safari · 390×844/.test(det) && /Lima · America Movil Peru/.test(det) && /Registrada en Arequipa/.test(det), "al tocarla: sus equipos, desde dónde entró y dónde está registrada → " + det.slice(0, 160));
+  await p.locator(".est-p-det .est-boton").click(); await p.waitForTimeout(400);
+  igual(await s.rpc("admin_interno"), [{ p_token: "tok-admin", p_llave: "912345678", p_interno: true }], "una cuenta se puede marcar como interna (la de prueba, la propia) y ya no cuenta con «Sin mí»");
+  igual((await s.rpc("admin_estadisticas")).length, 2, "y el panel se vuelve a cargar");
+  const csv = await Promise.all([p.waitForEvent("download"), p.locator(".est-boton", { hasText: "Descargar" }).click()]);
+  const texto = fs.readFileSync(await csv[0].path(), "utf8");
+  ok(csv[0].suggestedFilename() === "estadisticas-portal-7d.csv" && /"Rosa Quispe Mamani";"Arequipa"/.test(texto) && texto.split("\r\n").length === 6, "las personas se descargan para Excel → " + csv[0].suggestedFilename());
+  await s.foto("admin-estadisticas", true);
+  await p.locator(".est-sinmi").click(); await p.waitForTimeout(400);
+  igual((await s.rpc("admin_estadisticas")).pop(), { p_token: "tok-admin", p_op: { dias: 7, internos: true } }, "«Sin mí» se puede quitar para contar todas las cuentas");
+  ok(/^Contando todas las cuentas/.test(await s.texto(".admin-body > .est-nota")), "y lo dice");
+  await p.locator(".est-filtros .sim-chip", { hasText: "Hoy" }).click(); await p.waitForTimeout(300);
+  await p.locator(".est-filtros .sim-chip", { hasText: "Todo" }).click(); await p.waitForTimeout(300);
+  igual((await s.rpc("admin_estadisticas")).slice(-2).map((x) => x.p_op.dias), [1, 0], "«Hoy» pide el día y «Todo», desde el primer registro");
   await s.fin("admin");
 }
 
@@ -726,9 +733,9 @@ async function tutorial() {
   await s.foto("tutorial-11-listo");
   await p.locator(".tour-sig").click(); await p.waitForTimeout(300);
   igual(await s.cuenta(".tour"), 0, "Terminar cierra el tutorial");
-  const evs = await s.rpc("registrar_evento");
-  igual(evs.filter((x) => x.p_tipo === "tutorial").map((x) => x.p_detalle.accion), ["inicio", "fin"], "queda registrado que lo vio entero");
-  igual([evs.filter((x) => x.p_tipo === "ver_lista").length, evs.filter((x) => x.p_tipo === "ver_producto").length], [1, 0], "lo que abre el tutorial no cuenta como uso (solo la lista del inicio)");
+  const evs = await s.eventos();
+  igual(evs.filter((x) => x.tipo === "tutorial").map((x) => x.accion), ["inicio", "fin"], "queda registrado que lo vio entero");
+  igual([evs.filter((x) => x.tipo === "ver_lista").length, evs.filter((x) => x.tipo === "ver_producto").length], [1, 0], "lo que abre el tutorial no cuenta como uso (solo la lista del inicio)");
   await p.reload(); await p.waitForSelector(".lista-btn"); await p.waitForTimeout(1500);
   igual(await s.cuenta(".tour"), 0, "al volver a entrar tampoco sale solo");
   await p.locator(".nav-top .tour-ver").click();
@@ -1007,7 +1014,9 @@ async function cotizacion() {
   await p.evaluate(() => { window.__falla = ["AbortError"]; });
   await p.locator(".modal-box .share-quote-btn").click(); await p.waitForTimeout(600);
   igual(await s.cuenta(".modal-box .cap-err") + await s.cuenta(".modal-box .cap-ok"), 0, "si la asesora cierra las opciones de compartir, no es un error");
-  igual((await s.eventos("cotizacion")).map((e) => [e.via, e.resultado, e.codigo, e.modo]), [["compartir", "ok", "000158", "cliente"], ["compartir", "ok", "000158", "cliente"], ["compartir", "otro_toque", "000158", "cliente"], ["compartir", "ok", "000158", "cliente"], ["compartir", "error", "000158", "cliente"], ["compartir", "cancelado", "000158", "cliente"]], "cada intento queda en el registro de uso, con su resultado");
+  const evCot = await s.eventos("cotizacion");
+  ok(evCot.filter((e) => e.fase === "abre").every((e) => e.envio && evCot.some((f) => f.fase !== "abre" && f.envio === e.envio)), "cada vez que se abre compartir queda anotado, y su resultado lleva el mismo número de envío");
+  igual(evCot.filter((e) => e.fase !== "abre").map((e) => [e.via, e.resultado, e.codigo, e.modo]), [["compartir", "ok", "000158", "cliente"], ["compartir", "ok", "000158", "cliente"], ["compartir", "otro_toque", "000158", "cliente"], ["compartir", "ok", "000158", "cliente"], ["compartir", "error", "000158", "cliente"], ["compartir", "cancelado", "000158", "cliente"]], "cada intento queda en el registro de uso, con su resultado");
   await s.foto("cotizacion-pie");
 
   titulo("Cotización de autocompra");
@@ -1145,8 +1154,9 @@ async function video() {
   await p.locator(".tile .tile-btn").first().click(); await p.waitForTimeout(500);
   await p.locator(boton).click(); await p.waitForTimeout(600);
   igual([await p.evaluate(() => window.__compartido), s.registro.videos.length], [[[300000]], 1], "ni siquiera al volver a entrar al portal: queda guardado en el celular");
-  const ev = await s.eventos("video");
-  igual(ev.map((e) => [e.accion, e.resultado, e.origen, e.mb]), [["enviar", "ok", "guardado", 0.3]], "y queda anotado en el registro de uso, con de dónde salió y cuánto pesa");
+  const ev = (await s.eventos("video")).slice(-2);   // los de esta visita (antes de volver a entrar ya se mandó dos veces)
+  igual(ev.map((e) => [e.accion, e.fase || e.resultado, e.origen, e.mb]), [["enviar", "abre", undefined, undefined], ["enviar", "ok", "guardado", 0.3]].map((x) => JSON.parse(JSON.stringify(x))), "y queda anotado en el registro de uso: que se abrió WhatsApp y lo que pasó, con de dónde salió y cuánto pesa");
+  ok(ev.length === 2 && ev[0].envio && ev[0].envio === ev[1].envio, "los dos con el mismo número de envío");
   await s.fin("video guardado");
 
   titulo("Video que demora: avance, enlace de respaldo y segundo toque");
@@ -1164,7 +1174,9 @@ async function video() {
   await s.foto("video-listo");
   await p.locator(boton).click(); await p.waitForTimeout(500);
   igual([await p.evaluate(() => window.__compartido.map((x) => x.bytes)), await s.texto(boton), await s.cuenta(".modal-box .vid-estado"), s.registro.videos.length], [[500000], "Enviar video", 0, 1], "y con el segundo toque sale el video, sin volver a bajarlo");
-  igual((await s.eventos("video")).map((e) => e.resultado), ["otro_toque", "ok"], "los dos toques quedan registrados");
+  const vv = await s.eventos("video");
+  igual(vv.map((e) => e.fase || e.resultado), ["abre", "otro_toque", "abre", "ok"], "los dos toques quedan registrados, cada uno con su intento");
+  ok(vv.length === 4 && vv[0].envio === vv[1].envio && vv[2].envio === vv[3].envio && vv[0].envio !== vv[2].envio, "y cada toque es un envío distinto");
   igual(await p.evaluate(() => window.__abiertos), [], "nunca se abrió WhatsApp con solo el texto");
   await s.fin("video lento");
 
@@ -1176,15 +1188,24 @@ async function video() {
   await p.locator(".modal-box .vid-enlace").click(); await p.waitForTimeout(200);
   const ab = await p.evaluate(() => window.__abiertos);
   ok(ab.length === 1 && /^https:\/\/wa\.me\/\?text=Mira%20este%20producto/.test(ab[0]) && /videos%2F/.test(ab[0]), "el enlace abre WhatsApp con el texto y la dirección del video → " + (ab[0] || "").slice(0, 90));
-  igual((await s.eventos("video")).map((e) => [e.resultado, e.paso]), [["error", "bajar"]], "y la falla queda registrada para verla en Actividad");
+  igual((await s.eventos("video")).map((e) => [e.resultado, e.paso || ""]), [["error", "bajar"], ["enlace_fallo", ""]], "la falla queda registrada para verla en Estadísticas, y también el enlace que se mandó en su lugar");
   await s.fin("video que falla");
   s = await preparar({}, false);
   p = s.pagina;
   await p.locator(boton).click(); await p.waitForTimeout(400);
   const ab2 = await p.evaluate(() => window.__abiertos);
   ok(ab2.length === 1 && /^https:\/\/wa\.me\/\?text=/.test(ab2[0]) && s.registro.videos.length === 0, "en un navegador que no adjunta archivos, va directo el enlace por WhatsApp, sin bajar nada");
+  igual((await s.eventos("video")).map((e) => e.resultado), ["enlace_sin_adjuntar"], "y queda anotado que salió el enlace");
   ok(/se envía el enlace/.test(await s.texto(".modal-box .vid-estado")), "y lo explica → " + await s.texto(".modal-box .vid-estado"));
   await s.fin("celular que no adjunta");
+
+  titulo("Video que demora: la asesora manda solo el enlace");
+  s = await preparar({ video: { bytes: 500000, demora: 1500 } });
+  p = s.pagina;
+  await p.locator(boton).click(); await p.waitForTimeout(350);
+  await p.locator(".modal-box .vid-enlace").click(); await p.waitForTimeout(200);
+  igual([(await p.evaluate(() => window.__abiertos)).length, (await s.eventos("video")).map((e) => e.resultado)], [1, ["enlace_demora"]], "el enlace que manda mientras el video se prepara también cuenta como enviado");
+  await s.fin("enlace mientras se prepara");
 
   titulo("Con wifi o en computadora, el video se adelanta");
   s = await preparar({ ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36", movil: false, viewport: { width: 1280, height: 860 }, video: { bytes: 400000 } });
@@ -1214,7 +1235,10 @@ async function permanencia() {
   igual((await b.textos(".lista-btn .lista-nom")).length, 5, "a los pocos segundos reintenta sola y, cuando la base responde, completa la vista");
   igual((await b.rpc("asesor_sesion_valida")).length, 2, "con un solo reintento");
   const v = await b.eventos("visita");
-  ok(v.length === 1 && v[0].dispositivo === "Escritorio" && !!v[0].navegador && /x/.test(v[0].pantalla) && v[0].zona === "America/Lima", "la visita queda registrada con el equipo, el navegador, la pantalla y la zona → " + JSON.stringify(v[0]));
+  ok(v.length === 1 && v[0].dispositivo === "Escritorio" && !!v[0].navegador && /x/.test(v[0].pantalla) && v[0].zona === "America/Lima", "la visita queda registrada una vez, con el equipo, el navegador, la pantalla y la zona → " + JSON.stringify(v[0]));
+  const eqId = await b.pagina.evaluate(() => localStorage.getItem("rw_equipo_v1"));
+  ok(/^[0-9a-f-]{36}$/.test(eqId || "") && v[0] && v[0].eq === eqId && b.registro.eventos.every((e) => e.equipo === eqId), "con el id de este equipo (se crea una vez y queda guardado)");
+  igual(v[0] && v[0].geo && [v[0].geo.ciudad, v[0].geo.region, v[0].geo.isp], ["Arequipa", "Arequipa", "Telefonica del Peru"], "y la ubicación aproximada de la conexión (la da /geo, sin pedir permiso)");
   igual(await b.pagina.evaluate(() => JSON.parse(localStorage.getItem("rw_sesion_datos_v1") || "{}").nombre), "Nelson", "y el equipo ya recuerda a la persona para la próxima");
   await b.fin("la base tarda en responder");
 
@@ -1227,6 +1251,20 @@ async function permanencia() {
   await c.pagina.reload(); await c.pagina.waitForSelector(".lista-btn, .login-box"); await c.pagina.waitForTimeout(400);
   igual([await c.cuenta(".login-box"), await c.cuenta(".lista-btn")], [0, 5], "y al volver a abrir el portal ya no pide el DNI");
   await c.fin("sesión que ya no vale");
+
+  titulo("Registro de uso: si no hay señal, no se pierde");
+  const g = await sesion({ movil: true, eventosFallan: -1, cambiar: sinBono });
+  await g.pagina.locator(".tile .tile-btn").first().click(); await g.pagina.waitForTimeout(500);
+  await g.pagina.evaluate(() => window.__rwEnviarEventos(true)); await g.pagina.waitForTimeout(400);
+  const enCola = await g.cola();
+  ok(g.registro.eventos.length === 0 && enCola.some((e) => e.tipo === "visita") && enCola.some((e) => e.tipo === "ver_producto" && e.d.codigo === "000158"), "sin señal, los eventos quedan guardados en el equipo → " + enCola.map((e) => e.tipo).join(", "));
+  ok(enCola.every((e) => /^[0-9a-f-]{36}$/.test(e.id) && e.tok === "tok-asesor" && e.t > 0) && new Set(enCola.map((e) => e.id)).size === enCola.length, "cada uno con su id, su sesión y la hora en que pasó");
+  g.registro.opciones.eventosFallan = 0;   // vuelve la señal
+  await g.pagina.reload(); await g.pagina.waitForSelector(".lista-btn"); await g.pagina.waitForTimeout(3200);
+  const llegaron = g.registro.eventos;
+  ok(enCola.every((e) => llegaron.some((x) => x.id === e.id && x.t === e.t)), "al volver a abrir el portal salen solos, con su hora de entonces");
+  igual([(await g.cola()).length, llegaron.length, new Set(llegaron.map((e) => e.id)).size], [0, llegaron.length, llegaron.length], "y la cola queda vacía, sin repetidos");
+  await g.fin("registro sin señal");
 
   titulo("Registro de uso: lo que hace la asesora");
   const d = await sesion({ movil: true, cambiar: sinBono });
