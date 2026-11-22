@@ -954,5 +954,43 @@
     "resultados": 0
    }
   }
+ ],
+ "no_salieron_total": 2,
+ "no_salieron": [
+  {
+   "cuando": "2026-11-20T15:30:07Z",
+   "desde": "2026-11-20T15:29:14Z",
+   "nombre": "CARMEN HUAMAN DE LA CRUZ",
+   "tipo": "video",
+   "producto": "Juego Gourmet serie Zylstra",
+   "codigo": "000158",
+   "intentos": 6,
+   "que_paso": [
+    "cerro_antes",
+    "cerro_antes",
+    "otro_toque",
+    "cancelado",
+    "cancelado",
+    "cancelado"
+   ],
+   "mb": 9.3,
+   "seg": 59,
+   "equipo": "Celular · Android · Chrome · 360x806"
+  },
+  {
+   "cuando": "2026-11-20T14:10:00Z",
+   "desde": "2026-11-20T14:10:00Z",
+   "nombre": "LUCIA FLORES CCAMA",
+   "tipo": "cotizacion",
+   "producto": "Juego Chef I serie Zylstra",
+   "codigo": "000159",
+   "intentos": 1,
+   "que_paso": [
+    "cancelado"
+   ],
+   "mb": null,
+   "seg": 4,
+   "equipo": "Celular · iPhone · Safari · 390x844"
+  }
  ]
 }

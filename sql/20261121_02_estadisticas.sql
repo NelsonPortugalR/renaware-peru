@@ -94,6 +94,18 @@ begin
   ),
   envios as (select x.*, x.estado in ('enviado', 'probable', 'enlace') as salio from envios_todo x where x.t >= v_desde),
   envios_ant as (select x.*, x.estado in ('enviado', 'probable', 'enlace') as salio from envios_todo x where x.t < v_desde),
+  -- intentos seguidos de enviar lo mismo (menos de 15 minutos entre uno y otro); «no salió» si ninguno salió
+  intentos as (
+    select x.*, sum(x.nuevo) over (partition by x.llave, x.tipo, x.codigo order by x.t rows unbounded preceding) as grupo
+      from (select v.*, case when v.t - lag(v.t) over (partition by v.llave, v.tipo, v.codigo order by v.t) <= interval '15 minutes' then 0 else 1 end as nuevo
+              from envios v) x
+  ),
+  no_salieron as (
+    select i.llave, i.tipo, i.codigo, max(i.nombre) as producto, min(i.t) as desde, max(i.t) as hasta, count(*) as intentos,
+           array_agg(i.estado order by i.t) as que_paso, max(i.mb) as mb, max(i.ms) as ms, (min(i.token::text))::uuid as token
+      from intentos i group by i.llave, i.tipo, i.codigo, i.grupo
+     having not bool_or(i.salio)
+  ),
 
   -- primera vez que cada persona usó el portal (en toda la historia)
   primeras as (
@@ -369,6 +381,14 @@ begin
                           from envios v left join equipos_tok et on et.token = v.token and et.llave = v.llave
                           left join personas_j pj on pj.llave = v.llave
                          where v.estado in ('falla', 'cerro_antes') order by v.t desc limit 30) q),
+    'no_salieron_total', (select count(*) from no_salieron),
+    'no_salieron', (select coalesce(jsonb_agg(jsonb_build_object('cuando', q.hasta, 'desde', q.desde, 'nombre', q.nombre, 'tipo', q.tipo,
+                  'producto', q.producto, 'codigo', q.codigo, 'intentos', q.intentos, 'que_paso', to_jsonb(q.que_paso), 'mb', q.mb,
+                  'seg', round(q.ms / 1000.0), 'equipo', q.huella) order by q.hasta desc), '[]'::jsonb)
+                  from (select n.*, et.huella, coalesce(pj.nombre, '···' || right(n.llave, 3)) as nombre
+                          from no_salieron n left join equipos_tok et on et.token = n.token and et.llave = n.llave
+                          left join personas_j pj on pj.llave = n.llave
+                         order by n.hasta desc limit 40) q),
     'errores', (select coalesce(jsonb_agg(jsonb_build_object('msg', q.msg, 'veces', q.n, 'personas', q.p, 'ultima', q.u) order by q.n desc), '[]'::jsonb)
                   from (select left(coalesce(d->>'msg', '?'), 160) as msg, count(*) as n, count(distinct llave) as p, max(t) as u
                           from ev where tipo = 'error' group by 1 order by 2 desc limit 20) q),

@@ -548,6 +548,9 @@ async function admin() {
   const csv = await Promise.all([p.waitForEvent("download"), p.locator(".est-boton", { hasText: "Descargar" }).click()]);
   const texto = fs.readFileSync(await csv[0].path(), "utf8");
   ok(csv[0].suggestedFilename() === "estadisticas-portal-7d.csv" && /"Rosa Quispe Mamani";"Arequipa"/.test(texto) && texto.split("\r\n").length === 6, "las personas se descargan para Excel → " + csv[0].suggestedFilename());
+  const noSalio = await s.textos(".est-nosalio");
+  ok(noSalio.length === 2 && /^Carmen Huaman de la Cruz video de Juego Gourmet serie Zylstra6 intentos: cerró la ficha antes de que esté listo ×2, pidió otro toque, canceló ×3 · 9,3 MB · hasta 59 s esperando · Celular · Android · Chrome · 360×806/.test(noSalio[0]),
+    "«Lo que no salió»: quién intentó enviar qué, y qué pasó en cada intento → " + noSalio[0]);
   await s.foto("admin-estadisticas", true);
   await p.locator(".est-sinmi").click(); await p.waitForTimeout(400);
   igual((await s.rpc("admin_estadisticas")).pop(), { p_token: "tok-admin", p_op: { dias: 7, internos: true } }, "«Sin mí» se puede quitar para contar todas las cuentas");
@@ -1198,6 +1201,32 @@ async function video() {
   igual((await s.eventos("video")).map((e) => e.resultado), ["enlace_sin_adjuntar"], "y queda anotado que salió el enlace");
   ok(/se envía el enlace/.test(await s.texto(".modal-box .vid-estado")), "y lo explica → " + await s.texto(".modal-box .vid-estado"));
   await s.fin("celular que no adjunta");
+
+  titulo("Si cierra las opciones de compartir, se le ayuda");
+  s = await preparar({ video: { bytes: 300000 } });
+  p = s.pagina;
+  await p.evaluate(() => { window.__falla = ["AbortError"]; });
+  await p.locator(boton).click(); await p.waitForTimeout(700);
+  igual([await s.texto(".modal-box .vid-estado span"), await s.texto(".modal-box .vid-estado .vid-enlace")], ["¿No viste WhatsApp en la lista? Desliza para buscarlo, o envía el enlace.", "Enviar el enlace por WhatsApp"], "le dice dónde buscar WhatsApp y le ofrece el enlace");
+  await p.locator(".modal-box .vid-enlace").click(); await p.waitForTimeout(200);
+  igual([(await p.evaluate(() => window.__abiertos)).length, (await s.eventos("video")).map((e) => e.fase || e.resultado)], [1, ["abre", "cancelado", "enlace_cancelado"]], "y si manda el enlace, queda anotado");
+  await s.fin("cancelado");
+
+  titulo("Si cierra la ficha mientras el video se prepara, queda un aviso para enviarlo");
+  s = await preparar({ video: { bytes: 400000, demora: 1500 } });
+  p = s.pagina;
+  await p.locator(boton).click(); await p.waitForTimeout(300);
+  igual(await s.cuenta(".aviso-video"), 0, "mientras la ficha está abierta, el avance va en la ficha");
+  await s.cerrarFicha(); await p.waitForTimeout(200);
+  ok(/^Preparando tu video…/.test(await s.texto(".aviso-video")) && await s.cuenta(".aviso-video .vid-barra") === 1, "al cerrarla, el avance sigue abajo → " + await s.texto(".aviso-video"));
+  await p.waitForTimeout(1600);
+  igual([await s.texto(".aviso-video .av-cab span"), await s.texto(".aviso-video .av-enviar")], ["Tu video está listoJuego Gourmet serie Zylstra", "Enviar por WhatsApp"], "cuando está listo, el aviso lo dice con su botón");
+  await s.foto("aviso-video-listo");
+  await p.locator(".aviso-video .av-enviar").click(); await p.waitForTimeout(500);
+  const ev2 = await s.eventos("video");
+  igual([await p.evaluate(() => window.__compartido.map((x) => x.bytes)), await s.cuenta(".aviso-video"), ev2.map((e) => e.fase || e.resultado), ev2[ev2.length - 1].origen],
+    [[400000], 0, ["cerro_antes", "abre", "ok"], "aviso"], "con un toque sale el video, el aviso se va y queda anotado");
+  await s.fin("aviso del video");
 
   titulo("Video que demora: la asesora manda solo el enlace");
   s = await preparar({ video: { bytes: 500000, demora: 1500 } });

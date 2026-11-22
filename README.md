@@ -135,7 +135,10 @@ Storage, hasta 12 videos o 160 MB), con barra de avance. Con wifi o en
 computadora se adelanta la bajada al abrir la ficha. Si la bajada demoró tanto
 que el celular ya no deja compartir, queda «Video listo: enviar» (nunca manda
 solo el texto); si falla o el navegador no adjunta archivos, ofrece el enlace
-por WhatsApp.
+por WhatsApp. Mientras baja dice cuánto falta. Si la asesora cierra la ficha
+antes de que termine, queda un aviso abajo («Tu video está listo · Enviar por
+WhatsApp»); si cancela las opciones de compartir, se le dice dónde buscar
+WhatsApp y se le ofrece el enlace.
 
 ## Tutorial
 
@@ -175,7 +178,7 @@ valores comisionables. Los datos de `pruebas/datos.json` usan cifras inventadas.
 ## Pruebas
 
 ```
-node pruebas/prueba.js            # todo (unos 3 minutos; 553 verificaciones)
+node pruebas/prueba.js            # todo (unos 3 minutos; 564 verificaciones)
 SOLO=servicios node pruebas/prueba.js
 SOLO=inicial,cotizacion,video,permanencia node pruebas/prueba.js
 node pruebas/prueba.js capturas/  # además deja capturas

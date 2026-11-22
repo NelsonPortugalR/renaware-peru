@@ -1247,14 +1247,35 @@
     } catch (e) { return false; }
   };
   var puedeAdjuntarVideo = () => { try { return !!(navigator.canShare && navigator.canShare({ files: [new File(["x"], "video.mp4", { type: "video/mp4" })] })); } catch (e) { return false; } };
+  // Un video que quedó listo sin enviarse (la asesora cerró la ficha mientras se preparaba, o el celular pidió otro toque
+  // y ella se fue): queda un aviso abajo, «Tu video está listo · Enviar por WhatsApp», hasta que lo envíe o lo cierre.
+  // Mientras se prepara con la ficha cerrada, el aviso muestra el avance. (21/11/2026: Roxana cerró y abrió la ficha dos
+  // veces mientras bajaba un video de 9 MB, que tardó 59 s; esos toques se perdían.)
+  var avisoVideo = null, oyentesAviso = [], botonesVideo = {};
+  var ponerAviso = (a) => { avisoVideo = a; oyentesAviso.slice().forEach((f) => { try { f(a); } catch (e) {} }); };
+  var faltaVideo = (t0, f) => { const s = (Date.now() - t0) / 1000; return f > 0.03 && f < 1 && s > 2 ? Math.max(1, Math.round(s / f * (1 - f))) : 0; };
+  var textoFalta = (seg) => seg ? (seg < 90 ? " · faltan unos " + seg + " s" : " · faltan unos " + Math.round(seg / 60) + " min") : "";
+  var AYUDA_CANCELADO = "\xBFNo viste WhatsApp en la lista? Desliza para buscarlo, o env\xEDa el enlace.";
   var BotonVideoWa = ({ src, name, shareText, pill, esArchivo, codigo, precarga }) => {
-    const [estado, setEstado] = useState("");   // "" · "bajando" · "listo" (falta un toque) · "fallo"
+    const [estado, setEstado] = useState("");   // "" · "bajando" · "listo" (falta un toque) · "fallo" · "cancelado"
     const [pct, setPct] = useState(0);
+    const [falta, setFalta] = useState(0);
     const [msg, setMsg] = useState("");
-    const vivo = useRef(true);
+    const vivo = useRef(true), estadoRef = useRef("");
+    estadoRef.current = estado;
     useEffect(() => () => { vivo.current = false; }, []);
     const archivo = esArchivo !== false && /\.(mp4|webm|ogg|mov|m4v)(\?.*)?$/i.test(src || "");
     const texto = (shareText || "").trim() || ("Mira este producto: " + (name || "")).trim();
+    useEffect(() => {   // mientras este botón está a la vista, el aviso de abajo no hace falta
+      botonesVideo[src] = (botonesVideo[src] || 0) + 1;
+      ponerAviso(avisoVideo);
+      return () => {
+        botonesVideo[src] = Math.max(0, (botonesVideo[src] || 1) - 1);
+        // se fue con el video listo para enviar (el celular pidió otro toque): el aviso de abajo lo deja enviar
+        if (estadoRef.current === "listo" && videoListo.src === src && videoListo.file) ponerAviso({ src, name, codigo, texto, estado: "listo", file: videoListo.file });
+        else ponerAviso(avisoVideo);
+      };
+    }, [src]);
     useEffect(() => {
       if (!precarga || !archivo || !redSinCosto() || !puedeAdjuntarVideo()) return;
       const t = setTimeout(() => { prepararVideo(src, name).catch(() => {}); }, 1500);
@@ -1262,13 +1283,14 @@
     }, [src]);
     useEffect(() => {
       if (!msg || estado === "bajando" || estado === "listo") return;
-      const t = setTimeout(() => { if (vivo.current) { setMsg(""); if (estado === "fallo") setEstado(""); } }, 9e3);
+      const t = setTimeout(() => { if (vivo.current) { setMsg(""); if (estado === "fallo" || estado === "cancelado") setEstado(""); } }, estado === "cancelado" ? 15e3 : 9e3);
       return () => clearTimeout(t);
     }, [msg, estado]);
     const anotar = (resultado, extra, urgente) => rastrear("video", Object.assign({ accion: "enviar", resultado, codigo: codigo || "", nombre: name || "" }, extra || {}), urgente);
     const enlace = (e, motivo) => {   // WhatsApp directo, con el texto y la dirección del video (también queda anotado)
       if (e && e.stopPropagation) e.stopPropagation();
-      anotar(typeof motivo === "string" ? motivo : estado === "bajando" ? "enlace_demora" : "enlace_fallo", null, true);
+      anotar(typeof motivo === "string" ? motivo : estado === "bajando" ? "enlace_demora" : estado === "cancelado" ? "enlace_cancelado" : "enlace_fallo", null, true);
+      if (avisoVideo && avisoVideo.src === src) ponerAviso(null);
       window.open("https://wa.me/?text=" + encodeURIComponent(texto + "\n" + src), "_blank");
     };
     const enviar = async (e) => {
@@ -1285,9 +1307,11 @@
         let file = videoListo.src === src ? videoListo.file : null;
         const yaEstaba = !!file;
         if (!file) {
-          setEstado("bajando"); setPct(0); setMsg("");
-          file = await prepararVideo(src, name, (f) => { if (vivo.current) setPct(Math.round(f * 100)); });
-          if (!vivo.current) { anotar("cerro_antes", { ms: Date.now() - t0, mb: Math.round(file.size / 104857.6) / 10 }); return; }   // cerró la ficha mientras bajaba: el video queda guardado para la próxima
+          setEstado("bajando"); setPct(0); setFalta(0); setMsg("");
+          if (!avisoVideo || avisoVideo.src !== src || avisoVideo.estado !== "bajando") ponerAviso({ src, name, codigo, texto, estado: "bajando", t0 });
+          file = await prepararVideo(src, name, (f) => { if (vivo.current) { setPct(Math.round(f * 100)); setFalta(faltaVideo(t0, f)); } });
+          // cerró la ficha mientras bajaba: el video queda guardado y el aviso de abajo lo deja enviar
+          if (!vivo.current) { anotar("cerro_antes", { ms: Date.now() - t0, mb: Math.round(file.size / 104857.6) / 10 }); return; }
         }
         paso = "compartir";
         envio = nuevoId();   // si el celular cierra la página mientras se comparte, al menos queda que se abrió
@@ -1297,15 +1321,18 @@
         catch (err) { if (err && err.name === "AbortError") r = "cancelado"; else if (err && err.name === "NotAllowedError") r = "otro_toque"; else throw err; }
         if (vivo.current) {
           if (r === "otro_toque") { setEstado("listo"); setMsg("El video ya est\xE1 listo. Toca \xABEnviar\xBB otra vez."); }
+          else if (r === "cancelado") { setEstado("cancelado"); setMsg(AYUDA_CANCELADO); }
           else { setEstado(""); setMsg(""); }
         }
+        ponerAviso(r === "otro_toque" ? { src, name, codigo, texto, estado: "listo", file } : null);
         anotar(r, { envio, ms: Date.now() - t0, mb: Math.round(file.size / 104857.6) / 10, origen: yaEstaba ? "listo" : videoListo.origen });
       } catch (err) {
         if (vivo.current) { setEstado("fallo"); setMsg(paso === "bajar" ? "No se pudo preparar el video. Revisa tu conexi\xF3n." : "Tu celular no dej\xF3 compartir el video."); }
+        if (avisoVideo && avisoVideo.src === src) ponerAviso(null);
         anotar("error", { paso, envio: envio || undefined, error: String(err && (err.name ? err.name + ": " : "") + (err.message || err) || "").slice(0, 160) });
       }
     };
-    const rotulo = estado === "bajando" ? (pct ? "Preparando " + pct + "%" : "Preparando\u2026") : estado === "listo" ? "Video listo: enviar" : "Enviar video";
+    const rotulo = estado === "bajando" ? (pct ? "Preparando " + pct + "%" : "Preparando…") : estado === "listo" ? "Video listo: enviar" : "Enviar video";
     return h(React.Fragment, null,
       pill
         ? h("button", { className: `vid-wa ${estado}`, onClick: enviar, disabled: estado === "bajando", title: "Enviar el video por WhatsApp" },
@@ -1314,10 +1341,60 @@
             h(WhatsappSvg, { s: 18 })),
       (estado === "bajando" || msg) && h("div", { className: `vid-estado ${pill ? "" : "en-video"}`, role: "status", onClick: (e) => e.stopPropagation() },
         estado === "bajando" ? h(React.Fragment, null,
-          h("span", null, "Preparando el video\u2026 ", pct ? pct + "%" : ""),
+          h("span", null, "Preparando el video… ", pct ? pct + "%" : "", textoFalta(falta)),
           h("span", { className: "vid-barra" }, h("i", { style: { width: Math.max(4, pct) + "%" } })))
           : h("span", null, msg),
-        (estado === "bajando" || estado === "fallo") && h("button", { type: "button", className: "vid-enlace", onClick: enlace }, estado === "bajando" ? "\xBFDemora? Enviar solo el enlace" : "Enviar el enlace por WhatsApp")));
+        (estado === "bajando" || estado === "fallo" || estado === "cancelado") && h("button", { type: "button", className: "vid-enlace", onClick: enlace }, estado === "bajando" ? "\xBFDemora? Enviar solo el enlace" : "Enviar el enlace por WhatsApp")));
+  };
+  // El aviso de abajo: el video que se estaba preparando (con la ficha cerrada) y, cuando está listo, el botón para enviarlo
+  var AvisoVideo = () => {
+    const [a, setA] = useState(avisoVideo), [, setVuelta] = useState(0);
+    const [pct, setPct] = useState(0), [falta, setFalta] = useState(0), [msg, setMsg] = useState(""), [ocupado, setOcupado] = useState(false);
+    useEffect(() => {
+      const f = (x) => { setA(x); setVuelta((v) => v + 1); };
+      oyentesAviso.push(f);
+      return () => { oyentesAviso = oyentesAviso.filter((g) => g !== f); };
+    }, []);
+    useEffect(() => { setMsg(""); }, [a && a.src]);
+    useEffect(() => {
+      if (!a || a.estado !== "bajando") return;
+      let vivo = true;
+      setPct(0); setFalta(0);
+      prepararVideo(a.src, a.name, (f) => { if (vivo) { setPct(Math.round(f * 100)); setFalta(faltaVideo(a.t0 || Date.now(), f)); } }).then(
+        (file) => { if (avisoVideo && avisoVideo.src === a.src && avisoVideo.estado === "bajando") ponerAviso(Object.assign({}, avisoVideo, { estado: "listo", file })); },
+        () => { if (avisoVideo && avisoVideo.src === a.src && avisoVideo.estado === "bajando") ponerAviso(null); });
+      return () => { vivo = false; };
+    }, [a && a.src, a && a.estado]);
+    if (!a || (botonesVideo[a.src] || 0) > 0) return null;
+    const datos = { accion: "enviar", codigo: a.codigo || "", nombre: a.name || "" };
+    const enlace = () => {
+      rastrear("video", Object.assign({ resultado: a.estado === "bajando" ? "enlace_demora" : "enlace_aviso" }, datos), true);
+      ponerAviso(null);
+      window.open("https://wa.me/?text=" + encodeURIComponent((a.texto || "") + "\n" + a.src), "_blank");
+    };
+    const enviar = async () => {
+      if (!a.file || ocupado) return;
+      setOcupado(true); setMsg("");
+      const envio = nuevoId(), t0 = Date.now();
+      rastrear("video", Object.assign({ resultado: "", fase: "abre", envio }, datos), true);
+      let r = "ok", error = "";
+      try { await navigator.share(paraCompartir(a.file, a.name || "Video", a.texto)); }
+      catch (err) { r = err && err.name === "AbortError" ? "cancelado" : err && err.name === "NotAllowedError" ? "otro_toque" : "error"; error = String(err && (err.name ? err.name + ": " : "") + (err.message || err) || "").slice(0, 160); }
+      rastrear("video", Object.assign({}, datos, { resultado: r, envio, ms: Date.now() - t0, mb: Math.round(a.file.size / 104857.6) / 10, origen: "aviso" }, r === "error" ? { paso: "compartir", error } : {}));
+      setOcupado(false);
+      if (r === "ok") ponerAviso(null);
+      else setMsg(r === "cancelado" ? AYUDA_CANCELADO : r === "otro_toque" ? "Toca \xABEnviar por WhatsApp\xBB otra vez." : "Tu celular no dej\xF3 compartir el video. Env\xEDa el enlace.");
+    };
+    return h("div", { className: "aviso-video", role: "status" },
+      h("div", { className: "av-cab" }, h(WhatsappSvg, { s: 20 }),
+        h("span", null, a.estado === "listo" ? "Tu video est\xE1 listo" : "Preparando tu video…", h("small", null, a.name || "")),
+        h("button", { type: "button", className: "av-x", onClick: () => ponerAviso(null), "aria-label": "Cerrar el aviso" }, "\xD7")),
+      a.estado === "listo"
+        ? h("button", { type: "button", className: "av-enviar", onClick: enviar, disabled: ocupado }, h(WhatsappSvg, { s: 18 }), ocupado ? "Abriendo…" : "Enviar por WhatsApp")
+        : h(React.Fragment, null, h("span", { className: "vid-barra" }, h("i", { style: { width: Math.max(4, pct) + "%" } })),
+            h("span", { className: "av-pct" }, (pct ? pct + "%" : "Empezando…") + textoFalta(falta))),
+      msg && h("p", { className: "av-msg" }, msg),
+      (a.estado !== "listo" || msg) && h("button", { type: "button", className: "vid-enlace", onClick: enlace }, a.estado !== "listo" ? "\xBFDemora? Enviar solo el enlace" : "Enviar el enlace por WhatsApp"));
   };
   var FileVideoPlayer = ({ src, name, shareText, codigo, onBack }) => {
     const vidRef = useRef(null);
@@ -2157,6 +2234,12 @@
   var nombreVisible = (n) => !n ? "Sin nombre" : /[a-zñáéíóú]/.test(n) ? n : nombrePropio(n);
   var conPor = (t) => String(t || "").replace(/(\d)x(\d)/g, "$1×$2");   // 360x800 → 360×800
   var listaVisible = (k) => (typeof ETIQUETA_CORTA !== "undefined" && ETIQUETA_CORTA[k]) || k;
+  var QUE_PASO = { enviado: "enviado", probable: "probable", enlace: "por enlace", cancelado: "cancel\xF3", otro_toque: "pidi\xF3 otro toque", cerro_antes: "cerr\xF3 la ficha antes de que est\xE9 listo", falla: "fall\xF3", descarga: "se descarg\xF3", otro: "sin respuesta" };
+  var resumenIntentos = (lista) => {
+    const l = lista || [], grupos = [];
+    l.forEach((e) => { const u = grupos[grupos.length - 1]; if (u && u.e === e) u.n++; else grupos.push({ e, n: 1 }); });
+    return nf(l.length) + (l.length === 1 ? " intento: " : " intentos: ") + grupos.map((g) => (QUE_PASO[g.e] || g.e) + (g.n > 1 ? " \xD7" + g.n : "")).join(", ");
+  };
   var haceCuanto = (iso) => {
     if (!iso) return "—";
     const t = new Date(iso), min = (Date.now() - t.getTime()) / 60000;
@@ -2455,14 +2538,17 @@
             h(Barras, { filas: ((d.contenido || {}).videos_vistos || []).map((x) => ({ nombre: x.nombre || x.codigo, sub: nf(x.personas) + (x.personas === 1 ? " persona" : " personas"), v: x.veces })), vacio: "Nadie vio videos en el período." })),
           h("div", { className: "sim-card" }, h("h4", { className: "est-sub" }, "Qué buscan"),
             h(Barras, { filas: ((d.contenido || {}).busquedas || []).map((x) => ({ nombre: "«" + x.texto + "»", sub: x.sin ? (x.sin === x.veces ? "no encontró nada" : nf(x.sin) + " veces sin resultado") : "", v: x.veces })), vacio: "Nadie buscó en el período." })))),
-      ((d.fallas || []).length > 0 || (d.errores || []).length > 0) && h(Seccion, { titulo: "Fallas y errores", extra: nf((d.fallas || []).length + (d.errores || []).length) },
-        (d.fallas || []).length > 0 && h("div", { className: "sim-card" }, d.fallas.map((e, i) => h("div", { key: i, className: "sim-line" },
-          h("span", { className: "sim-name" }, h("strong", null, nombreVisible(e.nombre)), " ", describirEvento({ tipo: e.tipo, detalle: e.detalle || {} }),
-            h("small", null, h("br"), [conPor(e.equipo), e.detalle && e.detalle.paso, e.detalle && e.detalle.error].filter(Boolean).join(" · "))),
-          h("span", { className: "act-hora" }, fechaCorta(e.cuando))))),
-        (d.errores || []).length > 0 && h(React.Fragment, null, h("h4", { className: "est-sub" }, "Errores de la página en los equipos"),
+      h(Seccion, { titulo: "Lo que no salió", extra: d.no_salieron_total ? nf(d.no_salieron_total) + (d.no_salieron_total === 1 ? " vez" : " veces") : "nada" },
+        (d.no_salieron || []).length ? h("div", { className: "sim-card" }, d.no_salieron.map((x, i) => h("div", { key: i, className: "sim-line est-nosalio" },
+          h("span", { className: "sim-name" }, h("strong", null, nombreVisible(x.nombre)), " ", x.tipo === "video" ? "video" : "cotizaci\xF3n", " de ", x.producto || x.codigo || "",
+            h("small", null, h("br"), resumenIntentos(x.que_paso), x.tipo === "video" && x.mb ? " \xB7 " + String(x.mb).replace(".", ",") + " MB" : "",
+              x.tipo === "video" && x.seg ? " \xB7 hasta " + nf(x.seg) + " s esperando" : "", x.equipo ? " \xB7 " + conPor(x.equipo) : "")),
+          h("span", { className: "act-hora" }, fechaCorta(x.cuando)))))
+          : h("div", { className: "sim-empty" }, "Todo lo que se intent\xF3 enviar sali\xF3."),
+        h("p", { className: "est-nota" }, "Cada fila son los intentos seguidos de enviar lo mismo (menos de 15 minutos entre uno y otro) sin que ninguno saliera. \xABCancel\xF3\xBB: se cerraron las opciones de compartir sin elegir WhatsApp. \xABPidi\xF3 otro toque\xBB: el video tard\xF3 en prepararse y hab\xEDa que tocar de nuevo. \xABCerr\xF3 la ficha antes\xBB: se cerr\xF3 mientras el video se preparaba (desde el 21/11 queda un aviso abajo para enviarlo)."),
+        (d.errores || []).length > 0 && h(React.Fragment, null, h("h4", { className: "est-sub" }, "Errores de la p\xE1gina en los equipos"),
           h("div", { className: "sim-card" }, d.errores.map((e, i) => h("div", { key: i, className: "sim-line" },
-            h("span", { className: "sim-name" }, e.msg, h("small", null, h("br"), nf(e.personas), e.personas === 1 ? " persona" : " personas", " · última ", fechaCorta(e.ultima))),
+            h("span", { className: "sim-name" }, e.msg, h("small", null, h("br"), nf(e.personas), e.personas === 1 ? " persona" : " personas", " \xB7 \xFAltima ", fechaCorta(e.ultima))),
             h("strong", null, nf(e.veces))))))),
       h(Seccion, { titulo: "Ya no entran", extra: "hace más de 7 días", abierta: false },
         (d.inactivas || []).length ? h("div", { className: "sim-card" }, d.inactivas.map((x, i) => h("div", { key: i, className: "sim-line" },
@@ -3764,6 +3850,17 @@
         .admin-tabs{overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding-bottom:2px}
         .admin-tabs::-webkit-scrollbar{display:none}
         .admin-tab{flex:1 0 auto;white-space:nowrap}
+        /* ===== El aviso «Tu video está listo» (21/11/2026) ===== */
+        .aviso-video{position:fixed;left:12px;right:12px;bottom:calc(14px + env(safe-area-inset-bottom, 0px));z-index:9000;max-width:460px;margin:0 auto;display:flex;flex-direction:column;gap:9px;padding:12px 14px;border-radius:16px;background:rgba(15,23,42,.96);color:#fff;box-shadow:0 12px 32px rgba(0,0,0,.35)}
+        .av-cab{display:flex;align-items:center;gap:10px;font-size:15.5px;font-weight:800;line-height:1.25}
+        .av-cab>svg{flex-shrink:0;color:#25D366}
+        .av-cab>span{flex:1;min-width:0}
+        .av-cab small{display:block;margin-top:2px;font-size:12.5px;font-weight:600;color:#cbd5e1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .av-x{flex-shrink:0;width:34px;height:34px;border:0;border-radius:50%;background:rgba(255,255,255,.12);color:#fff;font-size:20px;line-height:1;cursor:pointer;font-family:inherit}
+        .av-enviar{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:13px;border:0;border-radius:12px;background:#25D366;color:#fff;font-family:inherit;font-size:16px;font-weight:800;cursor:pointer}
+        .av-enviar:disabled{opacity:.7}
+        .av-pct{font-size:13px;font-weight:600;color:#cbd5e1}
+        .av-msg{margin:0;font-size:13.5px;line-height:1.4;color:#e2e8f0}
       `;
   (function () {
     try {
@@ -4249,7 +4346,7 @@
         if (/admin/i.test(location.pathname + location.hash)) history.replaceState(null, "", "/");
       } catch (e) {
       }
-    } }), tour && h(Tour, { key: tour.n, pasos: tour.pasos, desde: tour.desde, onFin: terminarTour }));
+    } }), h(AvisoVideo, null), tour && h(Tour, { key: tour.n, pasos: tour.pasos, desde: tour.desde, onFin: terminarTour }));
   }
   var root = ReactDOM.createRoot(document.getElementById("root"));
   root.render(h(App, null));
