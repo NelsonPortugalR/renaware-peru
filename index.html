@@ -14,13 +14,15 @@
 <link rel="preconnect" href="https://i.ytimg.com" crossorigin>
 <script>
 /* Traspaso desde la plataforma: si el enlace trae #traspaso=<código>, se canjea por la sesión
-   propia de este módulo y se arranca ya con sesión. Si no trae nada, no pasa nada. */
+   propia de este módulo y se arranca ya con sesión. Si no trae nada, no pasa nada. También vale
+   ?traspaso=<código>: así llega el enlace que abre el portal en Chrome desde Opera (24/11/2026). */
 (function () {
-  var m = (location.hash || '').match(/[#&]traspaso=([0-9a-f-]{36})/i);
+  var m = (location.hash || '').match(/[#&]traspaso=([0-9a-f-]{36})/i) || (location.search || '').match(/[?&]traspaso=([0-9a-f-]{36})/i);
   if (!m) return;
   var codigo = m[1];
-  var resto = location.hash.slice(1).split('&').filter(function (p) { return p && !/^traspaso=/i.test(p); }).join('&');
-  history.replaceState(null, '', location.pathname + location.search + (resto ? '#' + resto : ''));
+  var sinCodigo = function (s) { return (s || '').slice(1).split('&').filter(function (p) { return p && !/^traspaso=/i.test(p); }).join('&'); };
+  var resto = sinCodigo(location.hash), consulta = sinCodigo(location.search);
+  history.replaceState(null, '', location.pathname + (consulta ? '?' + consulta : '') + (resto ? '#' + resto : ''));
   var raiz = document.documentElement, visAntes = raiz.style.visibility;
   raiz.style.visibility = 'hidden';
   function guardar(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
@@ -86,7 +88,11 @@
   var contexto = () => {
     const ua = navigator.userAgent || "";
     const so = /iPhone|iPad|iPod/.test(ua) ? "iOS" : /Android/.test(ua) ? "Android" : /Mac OS X/.test(ua) ? "macOS" : /Windows/.test(ua) ? "Windows" : "Otro";
-    const nav = /CriOS|Chrome/.test(ua) ? "Chrome" : /FxiOS|Firefox/.test(ua) ? "Firefox" : /Safari/.test(ua) ? "Safari" : "Otro";
+    // Opera, Samsung, Huawei, Edge, Xiaomi y los de Facebook e Instagram también dicen «Chrome»: se los nombra (24/11/2026:
+    // una asesora en Opera salía como Chrome)
+    const nav = /\bOPR\/|\bOPX\/|\bOMI\/|Opera Mini|OPiOS|\bOPT\//.test(ua) ? "Opera" : /SamsungBrowser/.test(ua) ? "Samsung" : /HuaweiBrowser/.test(ua) ? "Huawei"
+      : /\bEdg(A|iOS)?\//.test(ua) ? "Edge" : /MiuiBrowser|XiaoMi\//.test(ua) ? "Xiaomi" : /FBAN|FBAV|FB_IAB/.test(ua) ? "Facebook" : /Instagram/.test(ua) ? "Instagram"
+      : /CriOS|Chrome/.test(ua) ? "Chrome" : /FxiOS|Firefox/.test(ua) ? "Firefox" : /Safari/.test(ua) ? "Safari" : "Otro";
     return {
       dispositivo: /iPhone|Android.*Mobile/.test(ua) ? "Celular" : /iPad|Tablet/.test(ua) ? "Tablet" : "Escritorio",
       so, navegador: nav,
@@ -1312,6 +1318,39 @@
         h("button", { className: "aviso-peso-si", onClick: onSubir }, "Subir igual"),
         h("button", { className: "aviso-peso-no", onClick: onCancelar, autoFocus: true }, "No subir"))));
   };
+  // Opera en Android abre las opciones de compartir pero no adjunta el archivo: a WhatsApp solo le llega el texto. Es una
+  // falla conocida de Opera (24/11/2026: le pasó a una asesora con la cotización; su conexión salía por la VPN de Opera).
+  // Ahí no se comparte: se explica y se ofrece abrir el portal en Chrome con la misma sesión (un traspaso de un solo uso)
+  // o, según el caso, guardar la imagen o mandar el enlace del video.
+  var esOperaAndroid = () => { const ua = navigator.userAgent || ""; return /Android/.test(ua) && /\bOPR\/|\bOPX\/|\bOMI\/|Opera Mini/.test(ua); };
+  var navegarA = (u) => { if (window.__rwNavegarPrueba) return window.__rwNavegarPrueba(u); location.href = u; };
+  var enlaceChrome = (destino) => {
+    const u = new URL(destino);
+    return "intent://" + u.host + u.pathname + u.search + "#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=" + encodeURIComponent(destino) + ";end";
+  };
+  var pedirTraspaso = async () => {
+    try {
+      const tk = leerTok(SESION_KEY);
+      if (!sb || !tk) return "";
+      const { data, error } = await sb.rpc("traspaso_crear_asesor", { p_token: tk, p_modulo: "cotizador" });
+      return !error && data ? String(data) : "";
+    } catch (e) { return ""; }
+  };
+  var AyudaOpera = ({ que, alterno, onAlterno, onChrome, enVideo }) => {
+    const [cod, setCod] = useState(null);   // el código se pide al mostrar la ayuda: así el toque abre Chrome al instante
+    useEffect(() => { let vivo = true; pedirTraspaso().then((c) => { if (vivo) setCod(c); }); return () => { vivo = false; }; }, []);
+    const abrir = (e) => {
+      if (e) e.stopPropagation();
+      if (onChrome) onChrome(!!cod);
+      navegarA(enlaceChrome(location.origin + "/" + (cod ? "?traspaso=" + cod : "")));
+    };
+    return h("div", { className: "ayuda-opera" + (enVideo ? " en-video" : ""), role: "status", onClick: (e) => e.stopPropagation() },
+      h("strong", null, que === "video" ? "Opera no adjunta el video" : "Opera no adjunta la imagen"),
+      h("p", null, "Desde Opera, a WhatsApp solo le llega el texto. Ábrelo en Chrome: es la misma página" + (cod ? " y entras con tu sesión." : ".")),
+      h("div", { className: "ayuda-opera-btns" },
+        h("button", { type: "button", className: "ayuda-opera-chrome", onClick: abrir }, "Abrir en Chrome"),
+        alterno ? h("button", { type: "button", className: "ayuda-opera-otro", onClick: (e) => { e.stopPropagation(); onAlterno(); } }, alterno) : null));
+  };
   var BotonVideoWa = ({ src, name, shareText, pill, esArchivo, codigo, precarga }) => {
     const [estado, setEstado] = useState("");   // "" · "bajando" · "listo" (falta un toque) · "fallo" · "cancelado"
     const [pct, setPct] = useState(0);
@@ -1333,7 +1372,7 @@
       };
     }, [src]);
     useEffect(() => {
-      if (!precarga || !archivo || !redSinCosto() || !puedeAdjuntarVideo()) return;
+      if (!precarga || !archivo || !redSinCosto() || !puedeAdjuntarVideo() || esOperaAndroid()) return;
       const t = setTimeout(() => { prepararVideo(src, name).catch(() => {}); }, 1500);
       return () => clearTimeout(t);
     }, [src]);
@@ -1358,6 +1397,11 @@
         if (archivo) setMsg("Tu navegador no deja adjuntar el video: se env\xEDa el enlace.");
         return;
       }
+      if (esOperaAndroid()) {   // Opera no adjunta el archivo: en vez de mandar solo el texto, se explica y se ofrece Chrome o el enlace
+        if (estado !== "opera") anotar("opera", null, true);
+        setEstado(estado === "opera" ? "" : "opera"); setMsg("");
+        return;
+      }
       let paso = "bajar", envio = null;
       try {
         let file = videoListo.src === src ? videoListo.file : null;
@@ -1376,7 +1420,7 @@
         try { await navigator.share(paraCompartir(file, name || "Video", texto)); }
         catch (err) { if (err && err.name === "AbortError") r = "cancelado"; else if (err && err.name === "NotAllowedError") r = "otro_toque"; else throw err; }
         if (vivo.current) {
-          if (r === "otro_toque") { setEstado("listo"); setMsg("El video ya est\xE1 listo. Toca \xABEnviar\xBB otra vez."); }
+          if (r === "otro_toque") { setEstado("listo"); setMsg("El video ya baj\xF3. Tu celular pide un toque m\xE1s:"); }
           else if (r === "cancelado") { setEstado("cancelado"); setMsg(AYUDA_CANCELADO); }
           else { setEstado(""); setMsg(""); }
         }
@@ -1390,16 +1434,18 @@
     };
     const rotulo = estado === "bajando" ? (pct ? "Preparando " + pct + "%" : "Preparando…") : estado === "listo" ? "Video listo: enviar" : "Enviar video";
     return h(React.Fragment, null,
-      pill
+      estado === "listo" || estado === "opera" ? null : pill   // con el video listo o en Opera, el botón va dentro del aviso
         ? h("button", { className: `vid-wa ${estado}`, onClick: enviar, disabled: estado === "bajando", title: "Enviar el video por WhatsApp" },
             h(WhatsappSvg, { s: 17 }), h("span", null, rotulo))
         : h("button", { className: `fv-btn fv-wa ${estado}`, onClick: enviar, disabled: estado === "bajando", title: "Enviar el video por WhatsApp", "aria-label": rotulo },
             h(WhatsappSvg, { s: 18 })),
-      (estado === "bajando" || msg) && h("div", { className: `vid-estado ${pill ? "" : "en-video"}`, role: "status", onClick: (e) => e.stopPropagation() },
+      estado === "opera" ? h(AyudaOpera, { que: "video", alterno: "Enviar el enlace", enVideo: true, onAlterno: () => { setEstado(""); enlace(null, "enlace_opera"); }, onChrome: (conSesion) => anotar("opera_chrome", { con_sesion: conSesion }, true) })
+      : (estado === "bajando" || msg) && h("div", { className: `vid-estado ${pill ? "" : "en-video"} ${estado === "listo" ? "con-boton" : ""}`, role: "status", onClick: (e) => e.stopPropagation() },
         estado === "bajando" ? h(React.Fragment, null,
           h("span", null, "Preparando el video… ", pct ? pct + "%" : "", textoFalta(falta)),
           h("span", { className: "vid-barra" }, h("i", { style: { width: Math.max(4, pct) + "%" } })))
           : h("span", null, msg),
+        estado === "listo" && h("button", { type: "button", className: "av-enviar vid-otra", onClick: enviar }, h(WhatsappSvg, { s: 20 }), "Enviar el video"),
         (estado === "bajando" || estado === "fallo" || estado === "cancelado") && h("button", { type: "button", className: "vid-enlace", onClick: enlace }, estado === "bajando" ? "\xBFDemora? Enviar solo el enlace" : "Enviar el enlace por WhatsApp")));
   };
   // El aviso de abajo: el video que se estaba preparando (con la ficha cerrada) y, cuando está listo, el botón para enviarlo
@@ -1836,6 +1882,8 @@
     const [capErr, setCapErr] = useState("");
     const [capMsg, setCapMsg] = useState("");
     const [pendiente, setPendiente] = useState(null);   // imagen ya armada que el celular no dejó compartir sola: sale con otro toque
+    const [opera, setOpera] = useState(false);          // en Opera no se comparte (no adjunta la imagen): se explica qué hacer
+    const operaRef = useRef(null);
     const [fotoLista, setFotoLista] = useState(0);
     const bakedImgRef = useRef(null);
     const fotoEspera = useRef(null);
@@ -1936,7 +1984,7 @@
     // La imagen se arma sola apenas cambia algo: al tocar Compartir ya está lista y el celular abre sus opciones sin esperar
     // (si la página se demora después del toque, el celular se niega a compartir)
     useEffect(() => {
-      setPendiente(null);
+      setPendiente(null); setOpera(false);
       let vivo = true;
       const t = setTimeout(() => { armarArchivo(false).then((f) => { if (vivo) cotRef.current = { clave: claveCot, file: f }; }).catch(() => {}); }, 400);
       return () => { vivo = false; clearTimeout(t); };
@@ -1958,6 +2006,11 @@
       try {
         if (!file) file = await armarArchivo(true);
         paso = "compartir";
+        if (esOperaAndroid()) {   // Opera no adjunta la imagen (a WhatsApp le llega solo el texto): se explica y se ofrece Chrome o guardarla
+          operaRef.current = file; setOpera(true); anotarCot("compartir", "opera");
+          setCapturing(false);
+          return;
+        }
         if (!(navigator.canShare && navigator.canShare({ files: [file] }))) {
           descargar(file);
           setCapMsg("Tu navegador no deja compartir: la imagen se guard\xF3 en tu equipo.");
@@ -1968,7 +2021,7 @@
           let r = "ok";
           try { await navigator.share(paraCompartir(file, "Cotizacion", "Cotizacion - " + product.name)); }
           catch (e) { if (e && e.name === "AbortError") r = "cancelado"; else if (e && e.name === "NotAllowedError") r = "otro_toque"; else throw e; }
-          if (r === "otro_toque") { setPendiente(file); setCapMsg("La imagen ya est\xE1 lista. Toca otra vez para enviarla."); }
+          if (r === "otro_toque") { setPendiente(file); setCapMsg("La imagen ya est\xE1 lista. Tu celular pide un toque m\xE1s:"); }
           else setPendiente(null);
           anotarCot("compartir", r, { envio, ms: Date.now() - t0 });
         }
@@ -1978,7 +2031,7 @@
       }
       setCapturing(false);
     };
-    return h("div", { className: "modal-overlay", onClick: onClose }, h("div", { className: `modal-box ${auto ? "mode-auto" : ""}`, onClick: (e) => e.stopPropagation() }, !playing && h("button", { className: "modal-close", onClick: onClose }, h(XSvg, { s: 18 })), h("div", { className: "modal-scroll" }, h("div", { className: `modal-img ${playing && embed ? "playing" : ""} ${esCat ? "baja" : ""}` }, playing && embed ? h("div", { className: "modal-video" }, embed.type === "youtube" ? h(YouTubePlayer, { id: embed.id, onBack: () => setPlaying(false) }) : embed.type === "video" ? h(FileVideoPlayer, { src: embed.src, name: product.name, shareText: textoVideo, codigo: product.codigo, onBack: () => setPlaying(false) }) : h(React.Fragment, null, h("button", { className: "video-back", onClick: () => setPlaying(false) }, h(XSvg, { s: 13 }), " Imagen"), h("iframe", { src: embed.src, title: "Video del producto", allow: "autoplay; encrypted-media; fullscreen", allowFullScreen: true }))) : h(React.Fragment, null, h(LazyImage, { key: src, src, alt: product.name, codigo: product.codigo, onFoto: setConFoto }), !conFoto && !esCat && h("span", { className: "ptag", style: { background: "var(--blue)" } }, "N\xB0 ", product.orden), embed && h("div", { className: "play-overlay", onClick: () => { rastrear("ver_video", { lista: product.lista, codigo: product.codigo, nombre: product.name }); setPlaying(true); } }, h("div", { className: "play-btn" }, h("div", { className: "play-circle" }, h(PlaySvg, { s: 26 })), h("span", { className: "play-label" }, "Ver video"))), embed && h(BotonVideoWa, { src: embed.type === "video" ? embed.src : videoUrl, name: product.name, shareText: textoVideo, pill: true, esArchivo: embed.type === "video", codigo: product.codigo, precarga: true }))), h("div", { className: "modal-info" }, esCat && h("div", { className: "pcard-eti" }, product.catRaw, product.sub && !product.detalleCorto ? " \xB7 " + product.sub : ""), h("h3", { className: "pcard-name" }, esCat ? product.titulo || product.name : product.name), esCat && product.detalleCorto && h("p", { className: "pcard-det" }, product.detalleCorto), esCat && product.detalle && product.detalle !== product.detalleCorto && h("p", { className: "pcard-det" }, product.detalle), !product.esServicio && h("div", { className: "pcard-code" }, "C\xF3d. ", product.codigo), product.gift && h("div", { className: "gift-row" }, h(GiftSvg, null), h("span", null, "De Regalo: ", product.gift)), permiteAuto && h("div", { className: "mode-tabs" }, h("button", { className: `mode-tab ${!auto ? "on" : ""}`, onClick: () => setModo("cliente") }, "Precio Cliente"), h("button", { className: `mode-tab ${auto ? "on auto" : ""}`, onClick: () => setModo("auto") }, esCat ? "Precio Asesor" : "Precio Autocompra")), esCat ? h("div", { className: "pcard-content fade-in", key: auto ? "asesor" : "cliente" }, h(PrecioCatalogo, { product, auto, autoPrice, descuento, nota: notaGrupo, aviso: reglasLista && reglasLista.aviso })) : !auto ? h("div", { className: "pcard-content fade-in" }, h(PaymentBlock, { base: product.cashPrice, auto: false, summaryMode: "cliente", soloContado: !permiteCredito, pagoTotal: !permiteCredito, priceData: { regularPrice: product.regularPrice, cashPrice: product.cashPrice, hasPromo }, onState: setPayState }), h("div", { className: "points-note" }, h(SparkSvg, null), h("span", null, bonoVigente2 ? h(React.Fragment, null, "Esta venta da ", h("strong", null, product.points.toLocaleString("es-PE"), " pts"), ". Con el +", bonoInfo.porcentaje, "% vigente llega a ", h("strong", { className: "pts-alto" }, pts.toLocaleString("es-PE"), " pts"), ".") : h(React.Fragment, null, "Esta venta da ", h("strong", null, pts.toLocaleString("es-PE"), " pts"), "."))), muestraPremio && h(GananciaVenta, { vc: product.valorComisionable, puntos: pts })) : h("div", { className: "pcard-content fade-in" }, h(PaymentBlock, { base: autoPrice, auto: true, baseCliente: product.cashPrice, comparativo: true, summaryMode: "auto", priceData: { regularPrice: product.regularPrice, cashPrice: product.cashPrice, autoPrice, descuento, hasPromo }, onState: setPayState }), h("div", { className: "incentives" }, h("div", { className: "inc-header" }, h(SparkSvg, null), h("span", null, bonoVigente2 ? h(React.Fragment, null, "Esta autocompra da ", h("strong", null, product.points.toLocaleString("es-PE"), " pts"), ". Con el +", bonoInfo.porcentaje, "% vigente llega a ", h("strong", { className: "pts-alto" }, pts.toLocaleString("es-PE"), " pts"), ".") : h(React.Fragment, null, "Esta autocompra te da ", h("strong", null, pts.toLocaleString("es-PE"), " pts"), "."))), muestraPremio && (!metaInfo.alcanzado ? h("div", { className: "inc-level pending" }, h("p", null, "Si te encuentras en tus primeras 4 semanas, te faltan ", h("strong", null, "solo ", metaInfo.faltante, " pts"), " y ", h("strong", null, "solo ", metaInfo.meta.afiliados, " afiliados"), " para ganar:"), h("div", { className: "prize-row" }, h(TrophySvg, null), h("span", null, metaInfo.meta.premio))) : h("div", { className: "inc-level achieved" }, h("p", null, metaInfo.esTope ? "\xA1Felicidades!" : "\xA1Excelente!", " Si te encuentras en tus primeras 4 semanas, con ", h("strong", null, "solo ", metaInfo.meta.afiliados, " afiliados"), " ganas:"), h("div", { className: "prize-row ok" }, h(TrophySvg, null), h("span", null, metaInfo.meta.premio))))), muestraPremio && h(GananciaEquipo, { vc: product.valorComisionable, puntos: pts })))), h("div", { className: "modal-foot" }, capErr && h("div", { className: "cap-err" }, capErr), capMsg && h("div", { className: "cap-ok" }, capMsg), h("div", { className: "quote-actions" }, h("button", { className: `share-quote-btn ${pendiente ? "lista" : ""}`, onClick: shareQuote, disabled: capturing }, h(ShareSvg, { s: 17 }), " ", capturing ? "Preparando\u2026" : pendiente ? "Imagen lista: toca para enviar" : "Compartir cotizaci\xF3n")))));
+    return h("div", { className: "modal-overlay", onClick: onClose }, h("div", { className: `modal-box ${auto ? "mode-auto" : ""}`, onClick: (e) => e.stopPropagation() }, !playing && h("button", { className: "modal-close", onClick: onClose }, h(XSvg, { s: 18 })), h("div", { className: "modal-scroll" }, h("div", { className: `modal-img ${playing && embed ? "playing" : ""} ${esCat ? "baja" : ""}` }, playing && embed ? h("div", { className: "modal-video" }, embed.type === "youtube" ? h(YouTubePlayer, { id: embed.id, onBack: () => setPlaying(false) }) : embed.type === "video" ? h(FileVideoPlayer, { src: embed.src, name: product.name, shareText: textoVideo, codigo: product.codigo, onBack: () => setPlaying(false) }) : h(React.Fragment, null, h("button", { className: "video-back", onClick: () => setPlaying(false) }, h(XSvg, { s: 13 }), " Imagen"), h("iframe", { src: embed.src, title: "Video del producto", allow: "autoplay; encrypted-media; fullscreen", allowFullScreen: true }))) : h(React.Fragment, null, h(LazyImage, { key: src, src, alt: product.name, codigo: product.codigo, onFoto: setConFoto }), !conFoto && !esCat && h("span", { className: "ptag", style: { background: "var(--blue)" } }, "N\xB0 ", product.orden), embed && h("div", { className: "play-overlay", onClick: () => { rastrear("ver_video", { lista: product.lista, codigo: product.codigo, nombre: product.name }); setPlaying(true); } }, h("div", { className: "play-btn" }, h("div", { className: "play-circle" }, h(PlaySvg, { s: 26 })), h("span", { className: "play-label" }, "Ver video"))), embed && h(BotonVideoWa, { src: embed.type === "video" ? embed.src : videoUrl, name: product.name, shareText: textoVideo, pill: true, esArchivo: embed.type === "video", codigo: product.codigo, precarga: true }))), h("div", { className: "modal-info" }, esCat && h("div", { className: "pcard-eti" }, product.catRaw, product.sub && !product.detalleCorto ? " \xB7 " + product.sub : ""), h("h3", { className: "pcard-name" }, esCat ? product.titulo || product.name : product.name), esCat && product.detalleCorto && h("p", { className: "pcard-det" }, product.detalleCorto), esCat && product.detalle && product.detalle !== product.detalleCorto && h("p", { className: "pcard-det" }, product.detalle), !product.esServicio && h("div", { className: "pcard-code" }, "C\xF3d. ", product.codigo), product.gift && h("div", { className: "gift-row" }, h(GiftSvg, null), h("span", null, "De Regalo: ", product.gift)), permiteAuto && h("div", { className: "mode-tabs" }, h("button", { className: `mode-tab ${!auto ? "on" : ""}`, onClick: () => setModo("cliente") }, "Precio Cliente"), h("button", { className: `mode-tab ${auto ? "on auto" : ""}`, onClick: () => setModo("auto") }, esCat ? "Precio Asesor" : "Precio Autocompra")), esCat ? h("div", { className: "pcard-content fade-in", key: auto ? "asesor" : "cliente" }, h(PrecioCatalogo, { product, auto, autoPrice, descuento, nota: notaGrupo, aviso: reglasLista && reglasLista.aviso })) : !auto ? h("div", { className: "pcard-content fade-in" }, h(PaymentBlock, { base: product.cashPrice, auto: false, summaryMode: "cliente", soloContado: !permiteCredito, pagoTotal: !permiteCredito, priceData: { regularPrice: product.regularPrice, cashPrice: product.cashPrice, hasPromo }, onState: setPayState }), h("div", { className: "points-note" }, h(SparkSvg, null), h("span", null, bonoVigente2 ? h(React.Fragment, null, "Esta venta da ", h("strong", null, product.points.toLocaleString("es-PE"), " pts"), ". Con el +", bonoInfo.porcentaje, "% vigente llega a ", h("strong", { className: "pts-alto" }, pts.toLocaleString("es-PE"), " pts"), ".") : h(React.Fragment, null, "Esta venta da ", h("strong", null, pts.toLocaleString("es-PE"), " pts"), "."))), muestraPremio && h(GananciaVenta, { vc: product.valorComisionable, puntos: pts })) : h("div", { className: "pcard-content fade-in" }, h(PaymentBlock, { base: autoPrice, auto: true, baseCliente: product.cashPrice, comparativo: true, summaryMode: "auto", priceData: { regularPrice: product.regularPrice, cashPrice: product.cashPrice, autoPrice, descuento, hasPromo }, onState: setPayState }), h("div", { className: "incentives" }, h("div", { className: "inc-header" }, h(SparkSvg, null), h("span", null, bonoVigente2 ? h(React.Fragment, null, "Esta autocompra da ", h("strong", null, product.points.toLocaleString("es-PE"), " pts"), ". Con el +", bonoInfo.porcentaje, "% vigente llega a ", h("strong", { className: "pts-alto" }, pts.toLocaleString("es-PE"), " pts"), ".") : h(React.Fragment, null, "Esta autocompra te da ", h("strong", null, pts.toLocaleString("es-PE"), " pts"), "."))), muestraPremio && (!metaInfo.alcanzado ? h("div", { className: "inc-level pending" }, h("p", null, "Si te encuentras en tus primeras 4 semanas, te faltan ", h("strong", null, "solo ", metaInfo.faltante, " pts"), " y ", h("strong", null, "solo ", metaInfo.meta.afiliados, " afiliados"), " para ganar:"), h("div", { className: "prize-row" }, h(TrophySvg, null), h("span", null, metaInfo.meta.premio))) : h("div", { className: "inc-level achieved" }, h("p", null, metaInfo.esTope ? "\xA1Felicidades!" : "\xA1Excelente!", " Si te encuentras en tus primeras 4 semanas, con ", h("strong", null, "solo ", metaInfo.meta.afiliados, " afiliados"), " ganas:"), h("div", { className: "prize-row ok" }, h(TrophySvg, null), h("span", null, metaInfo.meta.premio))))), muestraPremio && h(GananciaEquipo, { vc: product.valorComisionable, puntos: pts })))), h("div", { className: "modal-foot" }, opera && h(AyudaOpera, { que: "imagen", alterno: "Guardar la imagen", onAlterno: () => { const f = operaRef.current; setOpera(false); if (f) { descargar(f); anotarCot("compartir", "descarga", { opera: true }); setCapMsg("La imagen se guard\xF3 en tu celular. En WhatsApp, adj\xFAntala con el clip."); } }, onChrome: (conSesion) => anotarCot("compartir", "opera_chrome", { con_sesion: conSesion }, true) }), capErr && h("div", { className: "cap-err" }, capErr), capMsg && h("div", { className: "cap-ok" }, capMsg), h("div", { className: "quote-actions" }, h("button", { className: `share-quote-btn ${pendiente ? "lista" : ""}`, onClick: shareQuote, disabled: capturing }, h(ShareSvg, { s: 17 }), " ", capturing ? "Preparando\u2026" : pendiente ? "Enviar la imagen" : "Compartir cotizaci\xF3n")))));
   };
   // ---- Recorrido guiado: se abre con «Ver tutorial» (ya no arranca solo la primera vez: Nelson, 20/11/2026).
   // Oscurece la pantalla, deja a la vista una parte, la explica y sigue con «Siguiente». Cada paso prepara antes
@@ -2290,7 +2343,7 @@
   var nombreVisible = (n) => !n ? "Sin nombre" : /[a-zñáéíóú]/.test(n) ? n : nombrePropio(n);
   var conPor = (t) => String(t || "").replace(/(\d)x(\d)/g, "$1×$2");   // 360x800 → 360×800
   var listaVisible = (k) => (typeof ETIQUETA_CORTA !== "undefined" && ETIQUETA_CORTA[k]) || k;
-  var QUE_PASO = { enviado: "enviado", probable: "probable", enlace: "por enlace", cancelado: "cancel\xF3", otro_toque: "pidi\xF3 otro toque", cerro_antes: "cerr\xF3 la ficha antes de que est\xE9 listo", falla: "fall\xF3", descarga: "se descarg\xF3", otro: "sin respuesta" };
+  var QUE_PASO = { enviado: "enviado", probable: "probable", enlace: "por enlace", cancelado: "cancel\xF3", otro_toque: "pidi\xF3 otro toque", cerro_antes: "cerr\xF3 la ficha antes de que est\xE9 listo", falla: "fall\xF3", descarga: "se descarg\xF3", opera: "Opera no adjunta el archivo", opera_chrome: "lo abri\xF3 en Chrome", otro: "sin respuesta" };
   var resumenIntentos = (lista) => {
     const l = lista || [], grupos = [];
     l.forEach((e) => { const u = grupos[grupos.length - 1]; if (u && u.e === e) u.n++; else grupos.push({ e, n: 1 }); });
@@ -3942,6 +3995,18 @@
         .aviso-peso-no{background:var(--blue);color:#fff;border:none}
         .aviso-peso-si{background:var(--card);color:var(--tinta);border:1.5px solid var(--border)}
         .aviso-peso-btns button:focus-visible{outline:3px solid var(--marca);outline-offset:2px}
+        /* El segundo toque con su propio botón, dentro del aviso (24/11/2026: «Toca «Enviar» otra vez» nombraba un botón que no se
+           llamaba así), y la ayuda de Opera, que no adjunta archivos al compartir */
+        .vid-estado.con-boton{bottom:10px}
+        .vid-otra{margin-top:2px;min-height:48px}
+        .ayuda-opera{margin:0 0 9px;padding:12px 13px;border-radius:var(--rs);background:var(--amberL);border:1.5px solid var(--amberB);color:var(--tinta);font-size:14.5px;line-height:1.4;text-align:left}
+        .ayuda-opera strong{display:block;font-size:15.5px;margin-bottom:3px}
+        .ayuda-opera p{margin:0 0 10px}
+        .ayuda-opera.en-video{position:absolute;left:10px;right:10px;bottom:10px;z-index:7;margin:0;box-shadow:0 8px 20px rgba(0,0,0,.3)}
+        .ayuda-opera-btns{display:flex;gap:8px;flex-wrap:wrap}
+        .ayuda-opera-btns button{flex:1 1 130px;min-height:44px;padding:0 10px;border-radius:var(--rs);font-size:15px;font-weight:700;cursor:pointer;font-family:inherit}
+        .ayuda-opera-chrome{background:var(--blue);color:#fff;border:none}
+        .ayuda-opera-otro{background:var(--card);color:var(--tinta);border:1.5px solid var(--border)}
       `;
   (function () {
     try {

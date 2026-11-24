@@ -124,21 +124,33 @@ debajo como imagen, de lado a lado** (el regalo ya no se escribe). Una foto sin
 franjas (una composición cuadrada) va entera.
 
 La imagen se prepara sola apenas cambia algo, para que el celular abra sus
-opciones en el mismo toque; si el celular se niega, queda «Imagen lista: toca
-para enviar». Los datos de la imagen quedan en `window.__cotizacion` (lo usan
-las pruebas).
+opciones en el mismo toque; si el celular se niega (pasó mucho rato desde el
+toque), dice «La imagen ya está lista. Tu celular pide un toque más:» sobre el
+botón «Enviar la imagen». Los datos de la imagen quedan en `window.__cotizacion`
+(lo usan las pruebas).
 
 ## Video
 
 «Enviar video» baja el archivo una vez y lo guarda en el celular (Cache
 Storage, hasta 12 videos o 160 MB), con barra de avance. Con wifi o en
 computadora se adelanta la bajada al abrir la ficha. Si la bajada demoró tanto
-que el celular ya no deja compartir, queda «Video listo: enviar» (nunca manda
-solo el texto); si falla o el navegador no adjunta archivos, ofrece el enlace
-por WhatsApp. Mientras baja dice cuánto falta. Si la asesora cierra la ficha
+que el celular ya no deja compartir, el aviso dice «El video ya bajó. Tu
+celular pide un toque más:» y trae su propio botón grande, «Enviar el video»
+(antes decía «Toca «Enviar» otra vez» y el botón se llamaba de otra forma); nunca
+manda solo el texto. Si falla o el navegador no adjunta archivos, ofrece el
+enlace por WhatsApp. Mientras baja dice cuánto falta. Si la asesora cierra la ficha
 antes de que termine, queda un aviso abajo («Tu video está listo · Enviar por
 WhatsApp»); si cancela las opciones de compartir, se le dice dónde buscar
 WhatsApp y se le ofrece el enlace.
+
+**Opera en Android** abre las opciones de compartir pero no adjunta el archivo:
+a WhatsApp le llega solo el texto (falla conocida de Opera). Ahí la página no
+comparte: explica qué pasa y ofrece «Abrir en Chrome», que abre el portal en
+Chrome con la misma sesión (un traspaso de un solo uso, `traspaso_crear_asesor`,
+que llega por `?traspaso=`), y además «Guardar la imagen» (cotización) o
+«Enviar el enlace» (video). En Opera tampoco se adelanta la bajada de videos.
+El registro de uso nombra el navegador de verdad (Opera, Samsung, Huawei, Edge,
+Xiaomi, Facebook, Instagram), que antes salía como «Chrome».
 
 **Al subir un video (Admin → Videos).** La asesora lo baja entero cada vez que
 lo comparte, casi siempre con datos. Antes de subir uno de más de 5 MB, el panel
@@ -189,7 +201,7 @@ valores comisionables. Los datos de `pruebas/datos.json` usan cifras inventadas.
 ## Pruebas
 
 ```
-node pruebas/prueba.js            # todo (unos 3 minutos; 583 verificaciones)
+node pruebas/prueba.js            # todo (unos 3 minutos; 604 verificaciones)
 SOLO=servicios node pruebas/prueba.js
 SOLO=inicial,cotizacion,video,permanencia node pruebas/prueba.js
 node pruebas/prueba.js capturas/  # además deja capturas

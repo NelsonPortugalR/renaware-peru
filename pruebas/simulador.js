@@ -60,6 +60,7 @@ window.supabase = { createClient: function () {
         if (a.p_op && a.p_op.internos) est.excluidos = [];
         (est.personas || []).forEach(function (p) { if (S.internos && p.llave in S.internos) p.interno = S.internos[p.llave]; });
         return R(est); }
+      if (n === "traspaso_crear_asesor") { if (!S.sesiones[a.p_token]) return E("Tu sesión venció. Vuelve a entrar con tu DNI."); if (a.p_modulo !== "cotizador") return E("No tienes acceso a ese módulo."); return R("0f0e0d0c-0b0a-4000-8000-00000000c0de"); }
       if (n === "admin_interno") { if (!esAdmin(a.p_token)) return E("Sesion invalida"); S.internos = S.internos || {}; S.internos[a.p_llave] = !!a.p_interno; return R(!!a.p_interno); }
       return R(null);
     },
@@ -92,7 +93,7 @@ async function abrir(o) {
     isMobile: !!o.movil, hasTouch: !!o.movil, locale: "es-PE", timezoneId: "America/Lima",
     ...(o.ua ? { userAgent: o.ua } : {})
   });
-  const registro = { escrituras: [], pedidos: [], errores: [], videos: [], eventos: [], lotes: 0, lotesFallidos: 0 };
+  const registro = { escrituras: [], pedidos: [], errores: [], videos: [], eventos: [], traspasos: [], lotes: 0, lotesFallidos: 0 };
   const vistos = {};
   await ctx.addInitScript((m) => { window.__MOCK = m; try {
       if (m.__sesion !== false && !sessionStorage.getItem("sim_listo")) {   // solo al abrir: al recargar queda lo que la página haya guardado o borrado
@@ -126,6 +127,12 @@ async function abrir(o) {
       return ruta.fulfill({ status: 200, contentType: "text/css", headers: { "access-control-allow-origin": "*" }, body: css });
     }
     if (u.hostname === "fonts.gstatic.com" && fuente) return archivo(path.join(fuente, path.basename(u.pathname)));
+    if (u.origin === SB && u.pathname === "/functions/v1/traspaso") {
+      if (req.method() === "OPTIONS") return ruta.fulfill({ status: 204, headers: { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "POST" } });
+      let b = {}; try { b = JSON.parse(req.postData() || "{}"); } catch (e) {}
+      registro.traspasos.push(b.codigo);
+      return json(b.codigo === "0f0e0d0c-0b0a-4000-8000-00000000c0de" ? { ok: true, tipo: "asesor", token: "tok-asesor" } : { ok: false, motivo: "Enlace inválido" });
+    }
     if (u.origin === SB && u.pathname === "/rest/v1/rpc/registrar_eventos") {
       if (req.method() === "OPTIONS") return ruta.fulfill({ status: 204, headers: { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "POST" } });
       if (o.eventosFallan && (o.eventosFallan < 0 || registro.lotesFallidos < o.eventosFallan)) { registro.lotesFallidos++; return ruta.abort("internetdisconnected"); }

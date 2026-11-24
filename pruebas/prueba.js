@@ -1082,7 +1082,7 @@ async function cotizacion() {
   // el celular a veces se niega a compartir si pasó mucho rato desde el toque: la imagen queda lista y se envía con otro toque
   await p.evaluate(() => { window.__falla = ["NotAllowedError"]; });
   await p.locator(".modal-box .share-quote-btn").click(); await p.waitForTimeout(600);
-  igual([await s.texto(".modal-box .share-quote-btn"), await s.texto(".modal-box .cap-ok"), await s.cuenta(".modal-box .cap-err")], ["Imagen lista: toca para enviar", "La imagen ya está lista. Toca otra vez para enviarla.", 0], "si el celular no deja compartir en ese toque, no da error: pide otro toque");
+  igual([await s.texto(".modal-box .share-quote-btn"), await s.texto(".modal-box .cap-ok"), await s.cuenta(".modal-box .cap-err")], ["Enviar la imagen", "La imagen ya está lista. Tu celular pide un toque más:", 0], "si el celular no deja compartir en ese toque, no da error: pide otro toque");
   ok(/lista/.test(await p.locator(".modal-box .share-quote-btn").getAttribute("class")), "con el botón en verde");
   c = await compartir();
   igual([c.length, c[2] && c[2].nombre, await s.texto(".modal-box .share-quote-btn"), await s.cuenta(".modal-box .cap-ok")], [3, "cotizacion-000158-cliente-credito-ini2000.png", "Compartir cotización", 0], "y con el segundo toque sale");
@@ -1195,6 +1195,65 @@ async function cotizacion() {
   fs.rmSync(dirFotos, { recursive: true, force: true });
 }
 
+/* ------------------------------------------------------------------ 14. Opera en Android: abre las opciones de compartir pero no adjunta
+   el archivo (a WhatsApp solo le llega el texto). La página no comparte: ofrece Chrome con la misma sesión, guardar la imagen o el enlace */
+async function opera() {
+  titulo("Opera en Android: no manda solo el texto; ofrece abrir el portal en Chrome con la misma sesión");
+  const OPERA = "Mozilla/5.0 (Linux; Android 14; JDY-LX3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Mobile Safari/537.36 OPR/85.4.4504.82593";
+  const CODIGO = "0f0e0d0c-0b0a-4000-8000-00000000c0de";
+  const s = await sesion({ movil: true, ua: OPERA, cambiar: sinBono });
+  const p = s.pagina;
+  await p.evaluate(() => {
+    window.__compartido = []; window.__abiertos = []; window.__navegado = [];
+    window.open = (u) => { window.__abiertos.push(String(u)); return null; };
+    window.__rwNavegarPrueba = (u) => { window.__navegado.push(String(u)); };
+    Object.defineProperty(navigator, "canShare", { configurable: true, value: () => true });   // Opera dice que sí puede
+    Object.defineProperty(navigator, "share", { configurable: true, value: async (d) => { window.__compartido.push((d.files || []).length); } });
+  });
+  const visita = (await s.eventos("visita")).pop();
+  igual(visita && visita.navegador, "Opera", "el registro de uso dice Opera, ya no «Chrome»");
+  await p.locator(".tile .tile-btn").first().click(); await p.waitForTimeout(600);
+  await p.locator(".modal-box .share-quote-btn").click(); await p.waitForTimeout(900);
+  igual(await p.evaluate(() => window.__compartido.length), 0, "la cotización no abre las opciones de compartir: a WhatsApp le llegaría solo el texto");
+  igual(await s.texto(".modal-box .ayuda-opera strong"), "Opera no adjunta la imagen", "lo explica");
+  igual(await s.texto(".modal-box .ayuda-opera p"), "Desde Opera, a WhatsApp solo le llega el texto. Ábrelo en Chrome: es la misma página y entras con tu sesión.", "y dice qué hacer");
+  igual(await s.textos(".modal-box .ayuda-opera button"), ["Abrir en Chrome", "Guardar la imagen"], "con dos salidas");
+  igual(await s.rpc("traspaso_crear_asesor"), [{ p_token: "tok-asesor", p_modulo: "cotizador" }], "ya pidió el traspaso de un solo uso, con la sesión de la asesora");
+  const caja = (await s.cajas(".modal-box .ayuda-opera"))[0];
+  ok(caja.x >= 0 && caja.der <= 390, "cabe en el celular → " + JSON.stringify(caja));
+  await s.foto("opera-cotizacion");
+  const [baja] = await Promise.all([p.waitForEvent("download"), p.locator(".modal-box .ayuda-opera-otro").click()]);
+  ok(/^cotizacion-000158-cliente-contado-ini\d+\.png$/.test(baja.suggestedFilename()) && await s.cuenta(".modal-box .ayuda-opera") === 0, "«Guardar la imagen» la guarda en el celular → " + baja.suggestedFilename());
+  igual(await s.texto(".modal-box .cap-ok"), "La imagen se guardó en tu celular. En WhatsApp, adjúntala con el clip.", "y dice cómo mandarla");
+  await p.locator(".modal-box .share-quote-btn").click(); await p.waitForTimeout(900);
+  await p.locator(".modal-box .ayuda-opera-chrome").click(); await p.waitForTimeout(200);
+  const destino = "https://portal.prueba/?traspaso=" + CODIGO;
+  igual(await p.evaluate(() => window.__navegado), ["intent://portal.prueba/?traspaso=" + CODIGO + "#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=" + encodeURIComponent(destino) + ";end"],
+    "«Abrir en Chrome» abre el portal en Chrome, con el código para entrar ya con sesión (si no hay Chrome, sigue en el mismo navegador)");
+  const cots = (await s.eventos("cotizacion")).map((e) => [e.resultado, e.opera || e.con_sesion || null]);
+  igual(cots, [["opera", null], ["descarga", true], ["opera", null], ["opera_chrome", true]], "y todo queda en el registro de uso");
+  await s.cerrarFicha();
+  await p.locator(".tile .tile-btn").first().click(); await p.waitForTimeout(600);
+  await p.locator(".modal-box .vid-wa").click(); await p.waitForTimeout(500);
+  igual([await p.evaluate(() => window.__compartido.length), s.registro.videos.length], [0, 0], "con el video tampoco comparte, y ni lo baja (no gasta datos)");
+  igual([await s.texto(".modal-box .ayuda-opera strong"), await s.textos(".modal-box .ayuda-opera button"), await s.cuenta(".modal-box .vid-wa")], ["Opera no adjunta el video", ["Abrir en Chrome", "Enviar el enlace"], 0],
+    "lo explica, con Chrome o el enlace, en lugar del botón");
+  await s.foto("opera-video");
+  await p.locator(".modal-box .ayuda-opera-otro").click(); await p.waitForTimeout(300);
+  const ab = await p.evaluate(() => window.__abiertos);
+  ok(ab.length === 1 && /^https:\/\/wa\.me\/\?text=/.test(ab[0]) && /\/videos\//.test(decodeURIComponent(ab[0])) && await s.cuenta(".modal-box .ayuda-opera") === 0, "«Enviar el enlace» abre WhatsApp con el enlace del video → " + ab[0]);
+  igual((await s.eventos("video")).map((e) => e.resultado), ["opera", "enlace_opera"], "también queda anotado");
+  await s.fin("opera");
+
+  titulo("Entrar con un traspaso que llega por ?traspaso= (así llega a Chrome desde Opera)");
+  const t = await sesion({ movil: true, sinSesion: true, ruta: "/?traspaso=" + CODIGO, cambiar: sinBono });
+  await t.pagina.waitForSelector(".lista-btn", { timeout: 8000 });
+  ok(await t.cuenta(".login-box") === 0 && await t.cuenta(".lista-btn") > 0, "entra directo, sin pedir el DNI");
+  igual([t.registro.traspasos, await t.pagina.evaluate(() => location.search + location.hash), await t.pagina.evaluate(() => localStorage.getItem("rw_sesion_v1"))],
+    [[CODIGO], "", "tok-asesor"], "canjea el código una vez, lo quita de la dirección y guarda la sesión");
+  await t.fin("traspaso por ?traspaso=");
+}
+
 /* ------------------------------------------------------------------ 13. el video: preparación, envío, segundo toque y respaldo por enlace */
 async function video() {
   const ANDROID = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36";
@@ -1247,10 +1306,12 @@ async function video() {
   igual(await s.texto(".modal-box .vid-enlace"), "¿Demora? Enviar solo el enlace", "y la salida rápida: mandar el enlace");
   await s.foto("video-preparando");
   await p.waitForTimeout(1600);
-  igual([await s.texto(boton), await s.texto(".modal-box .vid-estado"), await p.evaluate(() => window.__compartido.length)], ["Video listo: enviar", "El video ya está listo. Toca «Enviar» otra vez.", 0], "si demoró tanto que el celular ya no deja compartir, no manda solo el texto: avisa que está listo");
-  ok(/listo/.test(await p.locator(boton).getAttribute("class")) && !(await p.locator(boton).isDisabled()), "con el botón resaltado");
+  igual([await s.cuenta(boton), await s.texto(".modal-box .vid-estado > span"), await s.texto(".modal-box .vid-otra"), await p.evaluate(() => window.__compartido.length)],
+    [0, "El video ya bajó. Tu celular pide un toque más:", "Enviar el video", 0], "si demoró tanto que el celular ya no deja compartir, el aviso trae su propio botón (y no queda otro suelto)");
+  const otra = (await s.cajas(".modal-box .vid-otra"))[0];
+  ok(otra.h >= 44 && otra.w >= 200 && !(await p.locator(".modal-box .vid-otra").isDisabled()), "un botón grande, a la mano → " + JSON.stringify(otra));
   await s.foto("video-listo");
-  await p.locator(boton).click(); await p.waitForTimeout(500);
+  await p.locator(".modal-box .vid-otra").click(); await p.waitForTimeout(500);
   igual([await p.evaluate(() => window.__compartido.map((x) => x.bytes)), await s.texto(boton), await s.cuenta(".modal-box .vid-estado"), s.registro.videos.length], [[500000], "Enviar video", 0, 1], "y con el segundo toque sale el video, sin volver a bajarlo");
   const vv = await s.eventos("video");
   igual(vv.map((e) => e.fase || e.resultado), ["abre", "otro_toque", "abre", "ok"], "los dos toques quedan registrados, cada uno con su intento");
@@ -1390,7 +1451,7 @@ async function permanencia() {
 
 (async () => {
   const solo = process.env.SOLO || "";
-  const todas = { ingreso, vistaAsesor, permanencia, ganancia, inicial, cotizacion, repuestos, servicios, parteAlta, admin, respaldo, tutorial, compartir, video };
+  const todas = { ingreso, vistaAsesor, permanencia, ganancia, inicial, cotizacion, repuestos, servicios, parteAlta, admin, respaldo, tutorial, compartir, video, opera };
   for (const [n, fn] of Object.entries(todas)) {
     if (solo && solo.split(",").indexOf(n) < 0) continue;
     try { await fn(); } catch (e) { fallan++; console.log("  ✗ " + n + " se cayó: " + String(e.message || e).split("\n")[0]); }
