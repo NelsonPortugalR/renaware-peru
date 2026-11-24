@@ -1256,6 +1256,62 @@
   var faltaVideo = (t0, f) => { const s = (Date.now() - t0) / 1000; return f > 0.03 && f < 1 && s > 2 ? Math.max(1, Math.round(s / f * (1 - f))) : 0; };
   var textoFalta = (seg) => seg ? (seg < 90 ? " · faltan unos " + seg + " s" : " · faltan unos " + Math.round(seg / 60) + " min") : "";
   var AYUDA_CANCELADO = "\xBFNo viste WhatsApp en la lista? Desliza para buscarlo, o env\xEDa el enlace.";
+  // Aviso al subir un video pesado (Admin → Videos, 23/11/2026). La asesora baja el video entero cada vez que lo
+  // comparte: con señal floja (la que tuvo una asesora el 21/11: 9.3 MB en 59 s, ≈ 1.32 Mbps) uno de 44 MB tardaba 4 min 40 s.
+  // WhatsApp manda los videos en 720p como máximo, así que más resolución solo pesa. El peso esperado en 720p (H.264,
+  // CRF 23) sale de los 21 videos que se comprimieron ese día: ≈ 1.4 Mbps a 1280 × 720 y menos en tamaños chicos.
+  // Con ese cálculo, de esos 21 se habrían aligerado los mismos 7 que bajaron más de una cuarta parte.
+  var SENAL_FLOJA_BPS = 1.32e6, MB_VIDEO = 1048576;
+  var mbTexto = (b) => b < 10 * MB_VIDEO ? String(Math.round(b / MB_VIDEO * 10) / 10).replace(".", ",") + " MB" : Math.round(b / MB_VIDEO) + " MB";
+  var durTexto = (s, exacto) => {
+    s = Math.max(1, Math.round(s));
+    if (s < 60) return s + " s";
+    const m = Math.floor(s / 60), r = exacto ? s % 60 : Math.round((s % 60) / 5) * 5;
+    return r === 60 ? m + 1 + " min" : m + " min" + (r ? " " + r + " s" : "");
+  };
+  var peso720 = (seg, w, h) => {
+    const c = Math.min(w, h), l = Math.max(w, h), px = c > 720 ? 720 * Math.round(720 * l / c) : w * h;
+    return seg * 1.4e6 * Math.pow(Math.min(1, px / 921600), 0.75) / 8;
+  };
+  var consejoVideo = ({ bytes, seg, w, h }) => {
+    const conDatos = seg > 0 && w > 0 && h > 0, est = conDatos ? peso720(seg, w, h) : 0;
+    const aligerable = conDatos && est < 0.75 * bytes;
+    return { avisar: bytes > 10 * MB_VIDEO || (aligerable && bytes > 5 * MB_VIDEO), aligerable, conDatos, est, alto: conDatos && Math.min(w, h) > 720,
+      bajar: bytes * 8 / SENAL_FLOJA_BPS, bajarEst: est * 8 / SENAL_FLOJA_BPS };
+  };
+  window.__rwConsejoVideo = consejoVideo;   // para las pruebas
+  // Duración y tamaño de un video del equipo, sin subirlo; null si el navegador no lo puede leer
+  var leerVideoLocal = (file) => new Promise((ok) => {
+    let url = "", listo = false;
+    const v = document.createElement("video");
+    const fin = (r) => { if (listo) return; listo = true; clearTimeout(t); try { v.removeAttribute("src"); v.load(); } catch (e) {} if (url) URL.revokeObjectURL(url); ok(r); };
+    const t = setTimeout(() => fin(null), 5000);
+    v.preload = "metadata"; v.muted = true;
+    v.onloadedmetadata = () => fin(isFinite(v.duration) && v.duration > 0 && v.videoWidth ? { seg: v.duration, w: v.videoWidth, h: v.videoHeight } : null);
+    v.onerror = () => fin(null);
+    try { url = URL.createObjectURL(file); v.src = url; } catch (e) { fin(null); }
+  });
+  var AvisoPesoVideo = ({ aviso, onSubir, onCancelar }) => {
+    const { file, meta, info, nombre } = aviso;
+    useEffect(() => {
+      const k = (e) => { if (e.key === "Escape") onCancelar(); };
+      window.addEventListener("keydown", k);
+      return () => window.removeEventListener("keydown", k);
+    }, []);
+    const tam = meta ? meta.w + " \xD7 " + meta.h : "";
+    return h("div", { className: "aviso-peso-fondo", onClick: onCancelar }, h("div", { className: "aviso-peso", role: "dialog", "aria-modal": "true", "aria-labelledby": "aviso-peso-tit", onClick: (e) => e.stopPropagation() },
+      h("h3", { id: "aviso-peso-tit" }, "Este video pesa " + mbTexto(file.size)),
+      nombre ? h("p", { className: "aviso-peso-prod" }, nombre) : null,
+      h("p", null, "Cada vez que una asesora lo comparte, primero lo baja entero: con señal floja de celular tarda unos ", h("strong", null, durTexto(info.bajar)), "."),
+      info.aligerable && info.alto ? h("p", null, "Viene en " + (Math.min(meta.w, meta.h) >= 2160 ? "4K" : Math.min(meta.w, meta.h) + "p") + " (" + tam + "). En 720p pesaría unos ", h("strong", null, mbTexto(info.est)), " (" + durTexto(info.bajarEst) + ") y se vería igual en el celular: WhatsApp manda los videos en 720p como máximo.")
+        : info.aligerable ? h("p", null, "Está poco comprimido para su tamaño (" + tam + "). Comprimido pesaría unos ", h("strong", null, mbTexto(info.est)), " (" + durTexto(info.bajarEst) + ") y se vería igual.")
+        : info.conDatos ? h("p", null, "Ya está bien comprimido para su tamaño (" + tam + "): comprimirlo más le quitaría calidad. Para que baje más rápido tendría que ser más corto (dura " + durTexto(meta.seg, true) + ").")
+        : h("p", null, "No se pudo leer su resolución. Si viene en 1080p o 4K, en 720p pesaría bastante menos y se vería igual en el celular."),
+      info.aligerable || !info.conDatos ? h("p", { className: "aviso-peso-como" }, "Para comprimirlo: pídeselo a Claude, o usa HandBrake (gratis) con el ajuste «Fast\u00A0720p30».") : null,
+      h("div", { className: "aviso-peso-btns" },
+        h("button", { className: "aviso-peso-si", onClick: onSubir }, "Subir igual"),
+        h("button", { className: "aviso-peso-no", onClick: onCancelar, autoFocus: true }, "No subir"))));
+  };
   var BotonVideoWa = ({ src, name, shareText, pill, esArchivo, codigo, precarga }) => {
     const [estado, setEstado] = useState("");   // "" · "bajando" · "listo" (falta un toque) · "fallo" · "cancelado"
     const [pct, setPct] = useState(0);
@@ -2606,7 +2662,9 @@
         setRepMsg("No se pudo guardar: " + (e.message || e));
       }
     };
-    const onPickVideo = async (codigo, file) => {
+    const [avisoPeso, setAvisoPeso] = useState(null);   // video pesado esperando qué hacer: { codigo, nombre, file, meta, info }
+    const [revisandoCode, setRevisandoCode] = useState("");
+    const onPickVideo = async (codigo, file, nombre) => {
       if (!file) return;
       setUpErr("");
       if (!sb) {
@@ -2617,6 +2675,16 @@
         setUpErr("El video pesa mas de 50 MB. Comprimelo o sube uno mas corto.");
         return;
       }
+      if (file.size > 5 * MB_VIDEO) {   // ¿pesa mucho para bajarlo con datos? Antes de subirlo, se avisa
+        setRevisandoCode(codigo);
+        const meta = await leerVideoLocal(file);
+        setRevisandoCode("");
+        const info = consejoVideo(Object.assign({ bytes: file.size }, meta || {}));
+        if (info.avisar) { setAvisoPeso({ codigo, nombre, file, meta, info }); return; }
+      }
+      subirVideo(codigo, file);
+    };
+    const subirVideo = async (codigo, file) => {
       setUploadingCode(codigo);
       try {
         const ext = (file.name.split(".").pop() || "mp4").toLowerCase().replace(/[^a-z0-9]/g, "") || "mp4";
@@ -2771,13 +2839,13 @@
         onPickImage(p.codigo, f);
         e.target.value = "";
       } })), cur && h("button", { className: "admin-rmbtn", onClick: () => setImagen(p.codigo, "") }, "Quitar")), h("input", { key: cur, type: "url", defaultValue: cur, placeholder: "o pega un link (https://...)", onBlur: (e) => setImagen(p.codigo, e.target.value.trim()), onKeyDown: (e) => e.key === "Enter" && e.target.blur() }), p.esRepuesto && h("div", { className: "admin-repprecio" }, h("span", { className: "admin-repasesor" }, "Asesor ", formatMoney(p.precioAsesor)), h("label", null, "Precio cliente", h("input", { type: "number", inputMode: "decimal", defaultValue: repPrecio[p.codigo] != null ? repPrecio[p.codigo] : p.precioCliente, onBlur: (e) => guardarPrecioRepuesto(p.codigo, e.target.value), onKeyDown: (e) => e.key === "Enter" && e.target.blur() })), h("button", { className: "admin-rmbtn", onClick: () => guardarPrecioRepuesto(p.codigo, "") }, "Usar factor")), p.esServicio && h(ServicioPrecioAdmin, { codigo: p.codigo, precio: p.precioCliente, asesor: p.precioAsesorServ, onMsg: setRepMsg })));
-    })) : tab === "videos" ? h(React.Fragment, null, h("p", { className: "admin-note" }, "Sube el ", h("strong", null, "video MP4"), " de cada producto (asi los asesores pueden descargarlo y enviarlo por WhatsApp). Maximo 50 MB. Tambien puedes pegar un link de YouTube, pero ese queda solo para ver."), h("div", { className: "admin-textorow" }, h("label", null, "Mensaje que acompa\xF1a al video en WhatsApp", h("textarea", { rows: 3, defaultValue: (config.textos && config.textos.videoWhatsapp) || TEXTO_VIDEO_DEFAULT, onBlur: (e) => setConfig((c) => ({ ...c, textos: { ...c.textos || {}, videoWhatsapp: e.target.value } })) })), h("span", { className: "admin-textohint" }, "Usa ", h("strong", null, "{producto}"), " donde quieras que aparezca el nombre.")), upErr && h("div", { className: "info-banner red", style: { marginBottom: 10 } }, h(AlertSvg, null), h("span", null, upErr)), h("div", { className: "admin-catbar" }, filtros.map((c) => h("button", { key: c.key, className: `admin-catbtn ${catFilter === c.key ? "on" : ""}`, onClick: () => setCatFilter(c.key) }, c.label))), prods.map((p) => {
+    })) : tab === "videos" ? h(React.Fragment, null, h("p", { className: "admin-note" }, "Sube el ", h("strong", null, "video MP4"), " de cada producto (asi los asesores pueden descargarlo y enviarlo por WhatsApp). Maximo 50 MB. Tambien puedes pegar un link de YouTube, pero ese queda solo para ver. Si un video pesa mucho para bajarlo con datos, aqu\xED se avisa antes de subirlo."), avisoPeso && h(AvisoPesoVideo, { aviso: avisoPeso, onCancelar: () => setAvisoPeso(null), onSubir: () => { const a = avisoPeso; setAvisoPeso(null); subirVideo(a.codigo, a.file); } }), h("div", { className: "admin-textorow" }, h("label", null, "Mensaje que acompa\xF1a al video en WhatsApp", h("textarea", { rows: 3, defaultValue: (config.textos && config.textos.videoWhatsapp) || TEXTO_VIDEO_DEFAULT, onBlur: (e) => setConfig((c) => ({ ...c, textos: { ...c.textos || {}, videoWhatsapp: e.target.value } })) })), h("span", { className: "admin-textohint" }, "Usa ", h("strong", null, "{producto}"), " donde quieras que aparezca el nombre.")), upErr && h("div", { className: "info-banner red", style: { marginBottom: 10 } }, h(AlertSvg, null), h("span", null, upErr)), h("div", { className: "admin-catbar" }, filtros.map((c) => h("button", { key: c.key, className: `admin-catbtn ${catFilter === c.key ? "on" : ""}`, onClick: () => setCatFilter(c.key) }, c.label))), prods.map((p) => {
       const cur = config.videos[p.codigo] || "";
       const isFile = /\.(mp4|webm|mov|m4v)(\?.*)?$/i.test(cur) || cur.includes("/storage/v1/object/public/videos/");
-      const up = uploadingCode === p.codigo;
-      return h("div", { key: p.codigo, className: "admin-imgrow" }, h("div", { className: "admin-imgthumb" }, cur ? h("span", { style: { color: isFile ? "var(--green)" : "var(--blue)", display: "flex" } }, h(PlaySvg, { s: 20 })) : h("span", null, "\u2014")), h("div", { className: "admin-imgmain" }, h("div", { className: "admin-imgname" }, "N\xB0 ", p.num, " \xB7 ", p.nombre, " ", isFile && h("span", { style: { color: "var(--green)", fontWeight: 700 } }, "\xB7 MP4 \u2713")), h("div", { className: "admin-vidrow" }, h("label", { className: `admin-upbtn ${up ? "busy" : ""}` }, up ? "Subiendo\u2026" : isFile ? "Cambiar MP4" : "Subir MP4", h("input", { type: "file", accept: "video/mp4,video/webm,video/quicktime", disabled: up, onChange: (e) => {
+      const up = uploadingCode === p.codigo, rev = revisandoCode === p.codigo;
+      return h("div", { key: p.codigo, className: "admin-imgrow" }, h("div", { className: "admin-imgthumb" }, cur ? h("span", { style: { color: isFile ? "var(--green)" : "var(--blue)", display: "flex" } }, h(PlaySvg, { s: 20 })) : h("span", null, "\u2014")), h("div", { className: "admin-imgmain" }, h("div", { className: "admin-imgname" }, "N\xB0 ", p.num, " \xB7 ", p.nombre, " ", isFile && h("span", { style: { color: "var(--green)", fontWeight: 700 } }, "\xB7 MP4 \u2713")), h("div", { className: "admin-vidrow" }, h("label", { className: `admin-upbtn ${up || rev ? "busy" : ""}` }, up ? "Subiendo\u2026" : rev ? "Revisando\u2026" : isFile ? "Cambiar MP4" : "Subir MP4", h("input", { type: "file", accept: "video/mp4,video/webm,video/quicktime", disabled: up || rev, onChange: (e) => {
         const f = e.target.files && e.target.files[0];
-        onPickVideo(p.codigo, f);
+        onPickVideo(p.codigo, f, p.nombre);
         e.target.value = "";
       } })), cur && h("button", { className: "admin-rmbtn", onClick: () => setVideo(p.codigo, "") }, "Quitar")), h("input", { key: cur, type: "url", defaultValue: cur, placeholder: "o pega un link (YouTube / .mp4)", onBlur: (e) => setVideo(p.codigo, e.target.value.trim()), onKeyDown: (e) => e.key === "Enter" && e.target.blur() }), h("div", { className: "admin-msgrow" }, h("label", null, "Mensaje propio de este producto", h("textarea", { rows: 2, defaultValue: (config.mensajes && config.mensajes[p.codigo]) || "", placeholder: "Vac\xEDo = se usa el mensaje general de arriba", onBlur: (e) => setConfig((c) => { const m = { ...(c.mensajes || {}) }; const v = e.target.value.trim(); if (v) m[p.codigo] = v; else delete m[p.codigo]; return { ...c, mensajes: m }; }) })))));
     })) : tab === "asesores" ? h(AsesoresAdmin, null) : tab === "actividad" ? h(EstadisticasAdmin, null) : tab === "sinonimos" ? h(SinonimosAdmin, { reglas: leerSinonimos(config), setConfig, productos }) : tab === "premios" ? h(React.Fragment, null, h("p", { className: "admin-note" }, "Configura los ", h("strong", null, "niveles de premio por puntaje"), ": el puntaje necesario, la cantidad de afiliados y el premio. Se muestran en la vista de Autocompra."), metasCfg.map((m, i) => h("div", { key: i, className: "admin-metarow" }, h("div", { className: "admin-metafields" }, h("label", null, "Puntaje", h("input", { type: "number", value: m.puntos, onChange: (e) => setMeta(i, "puntos", Number(e.target.value) || 0) })), h("label", null, "Afiliados", h("input", { type: "number", value: m.afiliados, onChange: (e) => setMeta(i, "afiliados", Number(e.target.value) || 0) })), h("button", { className: "admin-metadel", onClick: () => delMeta(i), title: "Quitar nivel" }, h(TrashSvg, null))), h("input", { className: "admin-metaprem", type: "text", value: m.premio, onChange: (e) => setMeta(i, "premio", e.target.value), placeholder: "Premio (ej. Cocina de Inducci\xF3n + ...)" }))), h("button", { className: "admin-btn-main", onClick: addMeta }, h(PlusSvg, { s: 14 }), " Agregar nivel de premio")) : h(React.Fragment, null, h("div", { className: "info-banner blue", style: { marginBottom: 12 } }, h(InfoSvg, null), h("span", null, "Aqu\xED arriba est\xE1 la ", h("strong", null, "regla fija de la primera semana"), ". Abajo cargas los puntajes extra que Rena Ware lanza de vez en cuando: si eliges ", h("strong", null, "una lista"), ", ese % se suma; si no eliges ninguna, reemplaza al de la semana cuando es mayor.")), h(BonoSemanaAdmin, { bs: leerBonoSemana(config), setConfig }), h("div", { className: "admin-bonoform" }, h("div", { className: "admin-bonofields" }, h("label", null, "Desde", h("input", { type: "date", value: bIni, min: hoyPET(), onChange: (e) => {
@@ -3861,6 +3929,19 @@
         .av-enviar:disabled{opacity:.7}
         .av-pct{font-size:13px;font-weight:600;color:#cbd5e1}
         .av-msg{margin:0;font-size:13.5px;line-height:1.4;color:#e2e8f0}
+        /* Aviso de video pesado (Admin → Videos, 23/11/2026). Va dentro del panel, que ya desenfoca lo de atrás: un segundo
+           desenfoque (backdrop-filter) encima del primero dejaba ver el panel a través del aviso */
+        .aviso-peso-fondo{position:fixed;inset:0;z-index:130;background:rgba(15,23,42,.5);display:flex;align-items:center;justify-content:center;padding:14px;animation:fadeIn .2s ease-out}
+        .aviso-peso{background:var(--card);width:440px;max-width:100%;max-height:92vh;overflow-y:auto;border-radius:var(--r);padding:18px 18px 14px;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+        .aviso-peso h3{margin:0;font-size:19px;line-height:1.25;color:var(--tinta)}
+        .aviso-peso p{margin:0 0 10px;font-size:15px;line-height:1.45;color:var(--tinta)}
+        .aviso-peso .aviso-peso-prod{margin:2px 0 12px;font-size:13.5px;color:var(--muted)}
+        .aviso-peso .aviso-peso-como{font-size:13.5px;color:var(--muted)}
+        .aviso-peso-btns{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:14px}
+        .aviso-peso-btns button{min-height:44px;padding:0 18px;border-radius:var(--rs);font-size:15px;font-weight:700;cursor:pointer;font-family:inherit}
+        .aviso-peso-no{background:var(--blue);color:#fff;border:none}
+        .aviso-peso-si{background:var(--card);color:var(--tinta);border:1.5px solid var(--border)}
+        .aviso-peso-btns button:focus-visible{outline:3px solid var(--marca);outline-offset:2px}
       `;
   (function () {
     try {

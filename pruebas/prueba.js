@@ -17,6 +17,18 @@ const fs = require("fs");
 const { abrir, CLAVE_ADMIN } = require("./simulador.js");
 const DATOS = require("./datos.json");
 const ESTADISTICAS = require("./estadisticas.json");   // lo que arma admin_estadisticas, con personas y cifras inventadas
+const os = require("os");
+const { execFileSync } = require("child_process");
+// Un video 4K de verdad (WebM: el Chromium de las pruebas no lee H.264), de 2 s y ~8 MB; null si no hay ffmpeg
+function video4k() {
+  const f = path.join(os.tmpdir(), "rw-prueba-4k.webm");
+  try {
+    if (!fs.existsSync(f) || fs.statSync(f).size < 6 * 1048576)
+      execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=3840x2160:r=24:d=2,noise=alls=80:allf=t+u",
+        "-c:v", "libvpx", "-b:v", "30M", "-minrate", "30M", "-maxrate", "30M", "-bufsize", "30M", "-deadline", "realtime", "-cpu-used", "8", "-an", f], { stdio: "ignore", timeout: 120000 });
+    return fs.statSync(f).size >= 6 * 1048576 ? f : null;
+  } catch (e) { return null; }
+}
 const RAIZ = path.join(__dirname, "..");
 const CAPTURAS = process.argv[2] || "";
 
@@ -558,6 +570,69 @@ async function admin() {
   await p.locator(".est-filtros .sim-chip", { hasText: "Hoy" }).click(); await p.waitForTimeout(300);
   await p.locator(".est-filtros .sim-chip", { hasText: "Todo" }).click(); await p.waitForTimeout(300);
   igual((await s.rpc("admin_estadisticas")).slice(-2).map((x) => x.p_op.dias), [1, 0], "«Hoy» pide el día y «Todo», desde el primer registro");
+
+  titulo("Admin: Videos (avisa antes de subir uno pesado para bajarlo con datos)");
+  // El cálculo, con los 21 videos que se comprimieron el 23/11/2026: [código, bytes, segundos, ancho, alto]
+  const reales = [["177100", 46218959, 66.25, 3840, 2160], ["000117", 31516124, 81.11, 1920, 1080], ["000171", 27601259, 82.11, 1920, 1080],
+    ["000096", 26889219, 86.33, 1080, 1920], ["000146", 15679875, 65.9, 1280, 720], ["000145", 14956324, 75.07, 1280, 720], ["000158", 9791965, 60.19, 848, 480],
+    ["000169", 11708436, 73.03, 848, 480], ["000115", 15898200, 116.07, 1920, 1080], ["000179", 8662779, 59.46, 1920, 1080], ["000200", 10283187, 80.11, 1920, 1080],
+    ["000203", 9341783, 68.99, 1920, 1080], ["000105", 9391108, 154.2, 640, 360], ["000119", 5671826, 80.02, 640, 360], ["000125", 10091135, 228.51, 640, 360],
+    ["000132", 18544073, 354.34, 640, 360], ["000144", 14048516, 208.89, 640, 360], ["000159", 7467342, 106.02, 640, 360], ["000199", 5568987, 77.09, 640, 360],
+    ["000217", 7940862, 144.27, 640, 360], ["000218", 5818290, 111.01, 640, 360]];
+  const juicio = await p.evaluate((r) => r.map(([c, bytes, seg, w, h]) => [c, window.__rwConsejoVideo({ bytes, seg, w, h })]), reales);
+  igual(juicio.filter((x) => x[1].aligerable).map((x) => x[0]), ["177100", "000117", "000171", "000096", "000146", "000158", "000169"],
+    "propone aligerar justo los 7 que, comprimidos, bajaron más de una cuarta parte sin perder calidad");
+  igual(juicio.filter((x) => x[1].avisar && !x[1].aligerable).map((x) => x[0]), ["000145", "000115", "000132", "000144"],
+    "y avisa también de los que pasan de 10 MB aunque ya estén bien comprimidos (los largos)");
+  cerca(juicio[0][1].est / 1048576, 11.0, "la Gran Cacerola en 720p: calcula unos 11 MB, lo que de verdad pesó", 0.3);
+  cerca(juicio[0][1].bajar, 280, "y 4 min 40 s para bajar el original con la señal de Roxana", 3);
+
+  await p.locator(".admin-tab", { hasText: "Videos" }).click(); await p.waitForTimeout(300);
+  const filaV = p.locator(".admin-imgrow").first(), archivoV = filaV.locator("input[type=file]");
+  const nombreV = (await filaV.locator(".admin-imgname").innerText()).replace(/^N° \S+ · /, "").replace(/ · MP4 ✓$/, "").trim();
+  const subidas = () => p.evaluate(() => window.__SIM.subidas.map((x) => x.join("/")));
+  ok(/aquí se avisa antes de subirlo/.test(await s.texto(".admin-note")), "la nota de arriba lo dice");
+  await archivoV.setInputFiles({ name: "liviano.mp4", mimeType: "video/mp4", buffer: Buffer.alloc(1048576, 1) }); await p.waitForTimeout(400);
+  const sub1 = await subidas();
+  ok(await s.cuenta(".aviso-peso") === 0 && sub1.length === 1 && /^videos\/\d+-\d+\.mp4$/.test(sub1[0]), "uno liviano (1 MB) se sube sin preguntar → " + sub1);
+  const codV = sub1[0].split("/")[1].split("-")[0];
+  await archivoV.setInputFiles({ name: "pesado.mp4", mimeType: "video/mp4", buffer: Buffer.alloc(12 * 1048576, 1) });
+  await p.waitForSelector(".aviso-peso", { timeout: 6000 });
+  igual(await s.texto(".aviso-peso h3"), "Este video pesa 12 MB", "uno de 12 MB: antes de subirlo, avisa cuánto pesa");
+  igual(await s.texto(".aviso-peso-prod"), nombreV, "de qué producto es");
+  const aviso12 = await s.texto(".aviso-peso");
+  ok(/primero lo baja entero: con señal floja de celular tarda unos 1 min 15 s\./.test(aviso12), "cuánto tarda la asesora en bajarlo → " + aviso12);
+  ok(/No se pudo leer su resolución/.test(aviso12) && /pídeselo a Claude, o usa HandBrake \(gratis\) con el ajuste «Fast 720p30»/.test(aviso12), "si no puede leer el video, igual dice cómo aligerarlo");
+  igual(await p.evaluate(() => document.activeElement && document.activeElement.textContent), "No subir", "el botón a mano es «No subir»");
+  await p.waitForTimeout(300); await s.foto("admin-video-pesado");   // después de que termina de aparecer
+  await p.locator(".aviso-peso-no").click(); await p.waitForTimeout(200);
+  ok(await s.cuenta(".aviso-peso") === 0 && (await subidas()).length === 1, "«No subir» cierra el aviso y no sube nada");
+  await archivoV.setInputFiles({ name: "pesado.mp4", mimeType: "video/mp4", buffer: Buffer.alloc(12 * 1048576, 1) });
+  await p.waitForSelector(".aviso-peso", { timeout: 6000 });
+  await p.keyboard.press("Escape"); await p.waitForTimeout(200);
+  ok(await s.cuenta(".aviso-peso") === 0 && (await subidas()).length === 1, "Escape también lo cierra sin subir");
+  await archivoV.setInputFiles({ name: "pesado.mp4", mimeType: "video/mp4", buffer: Buffer.alloc(12 * 1048576, 1) });
+  await p.waitForSelector(".aviso-peso", { timeout: 6000 });
+  await p.locator(".aviso-peso-si").click(); await p.waitForTimeout(1200);
+  const sub2 = await subidas();
+  ok(sub2.length === 2 && sub2[1].startsWith("videos/" + codV + "-"), "«Subir igual» lo sube → " + sub2);
+  igual(await p.evaluate((c) => (window.__SIM.config && window.__SIM.config.videos || {})[c], codV), "https://kiexpdaaoegbtesqmaff.supabase.co/storage/v1/object/public/" + sub2[1],
+    "y queda como el video del producto");
+  const v4k = video4k();
+  if (!v4k) console.log("  (sin ffmpeg: no se prueba con un video 4K de verdad)");
+  else {
+    await archivoV.setInputFiles(v4k);
+    await p.waitForSelector(".aviso-peso", { timeout: 8000 });
+    const aviso4k = await s.texto(".aviso-peso");
+    ok(/^Este video pesa 7,7 MB/.test(aviso4k) && /tarda unos 49 s\./.test(aviso4k), "uno 4K de 7,7 MB también avisa → " + aviso4k);
+    ok(/Viene en 4K \(3840 × 2160\)\. En 720p pesaría unos 0,3 MB \(2 s\) y se vería igual en el celular: WhatsApp manda los videos en 720p como máximo\./.test(aviso4k),
+      "lee su resolución y calcula cuánto pesaría en 720p");
+    const caja = (await s.cajas(".aviso-peso"))[0];
+    ok(caja.x >= 0 && caja.der <= 900, "el aviso cabe en la pantalla → " + JSON.stringify(caja));
+    await p.waitForTimeout(300); await s.foto("admin-video-4k");   // después de que termina de aparecer
+    await p.locator(".aviso-peso-no").click(); await p.waitForTimeout(200);
+    igual((await subidas()).length, 2, "y con «No subir» no sube nada");
+  }
   await s.fin("admin");
 }
 

@@ -140,6 +140,17 @@ antes de que termine, queda un aviso abajo («Tu video está listo · Enviar por
 WhatsApp»); si cancela las opciones de compartir, se le dice dónde buscar
 WhatsApp y se le ofrece el enlace.
 
+**Al subir un video (Admin → Videos).** La asesora lo baja entero cada vez que
+lo comparte, casi siempre con datos. Antes de subir uno de más de 5 MB, el panel
+lo lee en el equipo (duración y tamaño de la imagen) y, si pesa más de 10 MB o
+en 720p pesaría menos de tres cuartas partes, avisa antes de subirlo: cuánto
+tarda en bajarlo una asesora con señal floja (1,32 Mbps, la que tuvo una el
+21/11/2026), cuánto pesaría en 720p (WhatsApp manda los videos en 720p como
+máximo) y cómo comprimirlo. El botón a mano es «No subir»; también está «Subir
+igual». El peso en 720p se calcula con lo que pesaron 21 videos comprimidos el
+23/11/2026 en H.264 (≈ 1,4 Mbps a 1280 × 720, menos en tamaños chicos): con ese
+cálculo se habrían aligerado justo los 7 que bajaron más de una cuarta parte.
+
 ## Tutorial
 
 Ya no arranca solo (desde el 20/11/2026): se abre con «Ver tutorial» (arriba,
@@ -178,13 +189,15 @@ valores comisionables. Los datos de `pruebas/datos.json` usan cifras inventadas.
 ## Pruebas
 
 ```
-node pruebas/prueba.js            # todo (unos 3 minutos; 564 verificaciones)
+node pruebas/prueba.js            # todo (unos 3 minutos; 583 verificaciones)
 SOLO=servicios node pruebas/prueba.js
 SOLO=inicial,cotizacion,video,permanencia node pruebas/prueba.js
 node pruebas/prueba.js capturas/  # además deja capturas
 ```
 
 Necesita Playwright (`npm i playwright` dentro de `pruebas/`, o el que ya trae
-el entorno). No sale a internet: React va en `pruebas/vendor/`, y la base es un
+el entorno). Si hay ffmpeg, la parte del panel arma un video 4K de 2 s (WebM,
+que el Chromium de las pruebas sí lee) para probar el aviso de video pesado; sin
+ffmpeg, esa parte se salta. No sale a internet: React va en `pruebas/vendor/`, y la base es un
 Supabase simulado (`pruebas/simulador.js`) que rechaza cualquier escritura
 directa a una tabla; si la página lo intenta, la prueba falla.
